@@ -8,6 +8,7 @@ import com.example.expenso.data.model.CategoryEntity
 import com.example.expenso.data.model.EventEntity
 import com.example.expenso.data.model.ExpenseEntity
 import com.example.expenso.data.model.PaymentMethod
+import com.example.expenso.data.preferences.ThemeMode
 import com.example.expenso.data.preferences.UserPreferences
 import com.example.expenso.data.repository.CategoryRepository
 import com.example.expenso.data.repository.EventRepository
@@ -28,6 +29,12 @@ class SettingsViewModel(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = "$"
+    )
+
+    val themeMode: StateFlow<ThemeMode> = userPreferences.themeMode.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ThemeMode.SYSTEM
     )
 
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.allCategories.stateIn(
@@ -54,6 +61,10 @@ class SettingsViewModel(
         userPreferences.setCurrency(symbol)
     }
 
+    fun setThemeMode(mode: ThemeMode) {
+        userPreferences.setThemeMode(mode)
+    }
+
     fun exportToCsv(context: Context, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val expenses = expenseRepository.getAllForExport()
@@ -64,7 +75,6 @@ class SettingsViewModel(
 
     fun seedSampleData(onComplete: () -> Unit) {
         viewModelScope.launch {
-            // Seed 2 Events: 1 with budget, 1 pure tag mode
             val event1Id = eventRepository.insertEvent(
                 EventEntity(
                     name = "Goa Road Trip",

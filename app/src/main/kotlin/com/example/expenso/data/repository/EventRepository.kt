@@ -13,6 +13,7 @@ class EventRepository(
 ) {
     val allEvents: Flow<List<EventEntity>> = eventDao.getAllEvents()
     val activeEvents: Flow<List<EventEntity>> = eventDao.getActiveEvents()
+    val archivedEvents: Flow<List<EventEntity>> = eventDao.getArchivedEvents()
 
     fun getEventById(id: Long): Flow<EventEntity?> {
         return eventDao.getEventById(id)
@@ -42,5 +43,9 @@ class EventRepository(
 
     suspend fun deleteEvent(event: EventEntity): Int {
         return eventDao.deleteEvent(event)
+    }
+
+    suspend fun setEventArchived(id: Long, isArchived: Boolean): Int {
+        return eventDao.setEventArchived(id, isArchived)
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Info
@@ -57,6 +59,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.expenso.data.preferences.ThemeMode
 import com.example.expenso.data.preferences.UserPreferences
 import com.example.expenso.ui.common.AddCategoryDialog
 import com.example.expenso.ui.common.Formatters
@@ -68,8 +71,10 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val currentCurrency by viewModel.currency.collectAsState()
+    val currentThemeMode by viewModel.themeMode.collectAsState()
     val categories by viewModel.categories.collectAsState()
     var showCurrencyDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
     var showCategoryManagementDialog by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
 
@@ -86,6 +91,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
                 Text(
@@ -121,6 +127,13 @@ fun SettingsScreen(
                 title = "Currency Symbol",
                 subtitle = "Active currency: $currentCurrency",
                 onClick = { showCurrencyDialog = true }
+            )
+
+            SettingItemCard(
+                icon = Icons.Default.DarkMode,
+                title = "App Theme",
+                subtitle = "Active theme: ${currentThemeMode.displayName}",
+                onClick = { showThemeDialog = true }
             )
 
             SettingItemCard(
@@ -224,6 +237,8 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(88.dp))
         }
 
         if (showCurrencyDialog) {
@@ -249,6 +264,33 @@ fun SettingsScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showCurrencyDialog = false }) {
+                        Text("Close")
+                    }
+                }
+            )
+        }
+
+        if (showThemeDialog) {
+            AlertDialog(
+                onDismissRequest = { showThemeDialog = false },
+                title = { Text("Select App Theme") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = currentThemeMode == mode,
+                                onClick = {
+                                    viewModel.setThemeMode(mode)
+                                    showThemeDialog = false
+                                },
+                                label = { Text(mode.displayName) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showThemeDialog = false }) {
                         Text("Close")
                     }
                 }

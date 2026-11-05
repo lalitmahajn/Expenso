@@ -1,6 +1,7 @@
 package com.example.expenso.ui.main
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -93,6 +94,7 @@ fun ExpensoMainScreen() {
         )
     } else {
         Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 NavigationBar {
                     BottomNavScreen.items.forEach { screen ->
@@ -115,7 +117,7 @@ fun ExpensoMainScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(bottom = padding.calculateBottomPadding())
             ) {
                 when (currentScreen) {
                     is BottomNavScreen.Expenses -> ExpensesScreen(viewModel = expenseViewModel)

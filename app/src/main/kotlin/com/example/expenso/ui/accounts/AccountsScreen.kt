@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +36,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Wallet
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -78,19 +82,24 @@ fun AccountsScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var accountToEdit by remember { mutableStateOf<AccountEntity?>(null) }
     var accountToDelete by remember { mutableStateOf<AccountEntity?>(null) }
+    var showTransferDialog by remember { mutableStateOf(false) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier
+                    .padding(bottom = 8.dp, end = 4.dp)
+                    .size(48.dp)
             ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = "Add Account")
             }
-        }
+        },
+        floatingActionButtonPosition = androidx.compose.material3.FabPosition.End
     ) { padding ->
         Column(
             modifier = Modifier
@@ -105,6 +114,7 @@ fun AccountsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Row(
@@ -112,7 +122,7 @@ fun AccountsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Account Balances",
                                 style = MaterialTheme.typography.titleLarge,
@@ -120,24 +130,51 @@ fun AccountsScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "Rough balance tracker • Tap any balance to edit",
+                                text = "Tap any balance to adjust",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "${uiState.accounts.size} Accounts",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                            if (uiState.accounts.size >= 2) {
+                                FilledTonalButton(
+                                    onClick = { showTransferDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(30.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SwapHoriz,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Transfer", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = "${uiState.accounts.size} Accounts",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
 
@@ -146,9 +183,10 @@ fun AccountsScreen(
                     // Dense 3-Stat Cells Row
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Total Net Balance",
                                 style = MaterialTheme.typography.labelSmall,
@@ -163,7 +201,10 @@ fun AccountsScreen(
                             )
                         }
 
-                        Column {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Text(
                                 text = "Total Assets",
                                 style = MaterialTheme.typography.labelSmall,
@@ -178,7 +219,10 @@ fun AccountsScreen(
                         }
 
                         if (uiState.totalLiabilities > 0) {
-                            Column(horizontalAlignment = Alignment.End) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.End
+                            ) {
                                 Text(
                                     text = "Credit Card Dues",
                                     style = MaterialTheme.typography.labelSmall,
@@ -231,7 +275,7 @@ fun AccountsScreen(
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(10.dp),
+                    contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -292,6 +336,19 @@ fun AccountsScreen(
                     TextButton(onClick = { accountToDelete = null }) {
                         Text("Cancel")
                     }
+                }
+            )
+        }
+
+        // Transfer Funds Dialog
+        if (showTransferDialog) {
+            TransferFundsDialog(
+                accounts = uiState.accounts,
+                currency = uiState.currency,
+                onDismiss = { showTransferDialog = false },
+                onConfirm = { fromId, toId, amount ->
+                    viewModel.transferFunds(fromId, toId, amount)
+                    showTransferDialog = false
                 }
             )
         }
@@ -666,6 +723,106 @@ fun AddAccountDialog(
                 }
             ) {
                 Text("Create Account")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TransferFundsDialog(
+    accounts: List<AccountEntity>,
+    currency: String,
+    onDismiss: () -> Unit,
+    onConfirm: (fromId: Long, toId: Long, amount: Double) -> Unit
+) {
+    var fromAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: 0L) }
+    var toAccountId by remember {
+        mutableStateOf(accounts.getOrNull(1)?.id ?: accounts.firstOrNull()?.id ?: 0L)
+    }
+    var amountText by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Transfer Between Accounts", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Transfer money directly between accounts (e.g. Bank to Cash ATM withdrawal or Bank to Credit Card payment) without logging an expense.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // From Account
+                Text("From Account", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    accounts.forEach { acc ->
+                        FilterChip(
+                            selected = fromAccountId == acc.id,
+                            onClick = {
+                                fromAccountId = acc.id
+                                if (toAccountId == acc.id) {
+                                    toAccountId = accounts.firstOrNull { it.id != acc.id }?.id ?: acc.id
+                                }
+                            },
+                            label = { Text(acc.name, fontSize = 11.sp) }
+                        )
+                    }
+                }
+
+                // To Account
+                Text("To Account", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    accounts.filter { it.id != fromAccountId }.forEach { acc ->
+                        FilterChip(
+                            selected = toAccountId == acc.id,
+                            onClick = { toAccountId = acc.id },
+                            label = { Text(acc.name, fontSize = 11.sp) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = {
+                        amountText = it.filter { char -> char.isDigit() || char == '.' }
+                        errorMessage = null
+                    },
+                    label = { Text("Transfer Amount ($currency)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = errorMessage != null,
+                    supportingText = errorMessage?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amount = amountText.toDoubleOrNull()
+                    if (amount == null || amount <= 0.0) {
+                        errorMessage = "Please enter an amount greater than 0"
+                    } else if (fromAccountId == toAccountId) {
+                        errorMessage = "Source and destination accounts must be different"
+                    } else {
+                        onConfirm(fromAccountId, toAccountId, amount)
+                    }
+                }
+            ) {
+                Text("Complete Transfer")
             }
         },
         dismissButton = {

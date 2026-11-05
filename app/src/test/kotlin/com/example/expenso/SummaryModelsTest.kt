@@ -63,4 +63,19 @@ class SummaryModelsTest {
         assertFalse(summary.isOverBudget)
         assertNull(summary.remainingBudget)
     }
+
+    @Test
+    fun testEventSpendSummary_archivedEvent() {
+        val event = EventEntity(
+            id = 4,
+            name = "Completed Roadtrip",
+            isArchived = true
+        )
+        val summary = EventSpendSummary(
+            event = event,
+            totalSpent = 350.0,
+            transactionCount = 2
+        )
+        assertTrue(summary.event.isArchived)
+    }
 }

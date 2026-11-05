@@ -150,6 +150,36 @@ class ExpenseViewModel(
         }
     }
 
+    fun updateExpense(
+        original: ExpenseEntity,
+        title: String,
+        amount: Double,
+        categoryId: Long,
+        eventId: Long?,
+        paymentMethod: PaymentMethod,
+        note: String = "",
+        accountId: Long? = null
+    ) {
+        viewModelScope.launch {
+            if (original.accountId != null) {
+                accountRepository.creditAccount(original.accountId, original.amount)
+            }
+            if (accountId != null) {
+                accountRepository.debitAccount(accountId, amount)
+            }
+            val updated = original.copy(
+                title = title.trim(),
+                amount = amount,
+                categoryId = categoryId,
+                eventId = eventId,
+                accountId = accountId,
+                paymentMethod = paymentMethod,
+                note = note.trim()
+            )
+            expenseRepository.updateExpense(updated)
+        }
+    }
+
     fun addCategory(
         name: String,
         iconName: String,

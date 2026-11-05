@@ -43,6 +43,9 @@ data class EventsUiState(
     val filterCategoryId: Long? = null,
     val filterPaymentMethod: PaymentMethod? = null,
     val sortOption: EventSortOption = EventSortOption.NEWEST,
+    val showArchived: Boolean = false,
+    val activeCount: Int = 0,
+    val archivedCount: Int = 0,
     val isLoading: Boolean = false
 )
 
@@ -57,6 +60,9 @@ class EventViewModel(
     private val _selectedEventId = MutableStateFlow<Long?>(null)
     val selectedEventId = _selectedEventId.asStateFlow()
 
+    private val _showArchived = MutableStateFlow(false)
+    val showArchived = _showArchived.asStateFlow()
+
     private val _detailSearchQuery = MutableStateFlow("")
     private val _detailCategoryId = MutableStateFlow<Long?>(null)
     private val _detailPaymentMethod = MutableStateFlow<PaymentMethod?>(null)
@@ -67,17 +73,32 @@ class EventViewModel(
         val query: String,
         val categoryId: Long?,
         val paymentMethod: PaymentMethod?,
-        val sortOption: EventSortOption
+        val sortOption: EventSortOption,
+        val showArchived: Boolean
     )
 
-    private val detailFilters = combine(
+    private data class DetailSearchFilter(
+        val selectedId: Long?,
+        val query: String,
+        val categoryId: Long?,
+        val paymentMethod: PaymentMethod?
+    )
+
+    private val _detailSearchFilter = combine(
         _selectedEventId,
         _detailSearchQuery,
         _detailCategoryId,
-        _detailPaymentMethod,
-        _detailSortOption
-    ) { id, query, catId, pm, sort ->
-        DetailFilterParams(id, query, catId, pm, sort)
+        _detailPaymentMethod
+    ) { id, query, catId, pm ->
+        DetailSearchFilter(id, query, catId, pm)
+    }
+
+    private val detailFilters = combine(
+        _detailSearchFilter,
+        _detailSortOption,
+        _showArchived
+    ) { sf, sort, archived ->
+        DetailFilterParams(sf.selectedId, sf.query, sf.categoryId, sf.paymentMethod, sort, archived)
     }
 
     private data class MetaAndCurrency(
@@ -107,6 +128,10 @@ class EventViewModel(
         } else {
             emptyList()
         }
+
+        val activeSummaries = summaries.filter { !it.event.isArchived }
+        val archivedSummaries = summaries.filter { it.event.isArchived }
+        val displayedSummaries = if (filters.showArchived) archivedSummaries else activeSummaries
 
         // Category Breakdown within this event
         val categoryBreakdowns = eventExpenses
@@ -169,7 +194,7 @@ class EventViewModel(
         }
 
         EventsUiState(
-            summaries = summaries,
+            summaries = displayedSummaries,
             currency = meta.currency,
             selectedEventId = selectedId,
             selectedEventSummary = selectedSummary,
@@ -184,6 +209,9 @@ class EventViewModel(
             filterCategoryId = filters.categoryId,
             filterPaymentMethod = filters.paymentMethod,
             sortOption = filters.sortOption,
+            showArchived = filters.showArchived,
+            activeCount = activeSummaries.size,
+            archivedCount = archivedSummaries.size,
             isLoading = false
         )
     }.stateIn(
@@ -196,6 +224,16 @@ class EventViewModel(
         _selectedEventId.value = eventId
         if (eventId == null) {
             clearDetailFilters()
+        }
+    }
+
+    fun setShowArchived(show: Boolean) {
+        _showArchived.value = show
+    }
+
+    fun toggleArchiveEvent(event: EventEntity) {
+        viewModelScope.launch {
+            eventRepository.setEventArchived(event.id, !event.isArchived)
         }
     }
 
@@ -280,6 +318,38 @@ class EventViewModel(
             if (accountId != null) {
                 accountRepository.debitAccount(accountId, amount)
             }
+        }
+    }
+
+    fun updateEventExpense(
+        original: ExpenseEntity,
+        title: String,
+        amount: Double,
+        categoryId: Long,
+        paymentMethod: PaymentMethod,
+        note: String = "",
+        accountId: Long? = null,
+        timestamp: Long = original.timestamp
+    ) {
+        viewModelScope.launch {
+            // Refund original account if was debited
+            if (original.accountId != null) {
+                accountRepository.creditAccount(original.accountId, original.amount)
+            }
+            // Debit new account if selected
+            if (accountId != null) {
+                accountRepository.debitAccount(accountId, amount)
+            }
+            val updated = original.copy(
+                title = title.trim(),
+                amount = amount,
+                categoryId = categoryId,
+                accountId = accountId,
+                paymentMethod = paymentMethod,
+                note = note.trim(),
+                timestamp = timestamp
+            )
+            expenseRepository.updateExpense(updated)
         }
     }
 

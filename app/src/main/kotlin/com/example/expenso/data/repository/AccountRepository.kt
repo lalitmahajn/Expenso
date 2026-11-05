@@ -25,6 +25,11 @@ class AccountRepository(private val accountDao: AccountDao) {
         accountDao.creditBalance(id, amount)
     }
 
+    suspend fun transferFunds(fromAccountId: Long, toAccountId: Long, amount: Double) {
+        accountDao.debitBalance(fromAccountId, amount)
+        accountDao.creditBalance(toAccountId, amount)
+    }
+
     suspend fun setAccountBalance(id: Long, newBalance: Double) {
         accountDao.setBalance(id, newBalance)
     }

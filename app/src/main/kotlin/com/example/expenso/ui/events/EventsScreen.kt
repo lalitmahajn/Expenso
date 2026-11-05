@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,17 +61,21 @@ fun EventsScreen(
     var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier
+                    .padding(bottom = 8.dp, end = 4.dp)
+                    .size(48.dp)
             ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = "Add Function")
             }
-        }
+        },
+        floatingActionButtonPosition = androidx.compose.material3.FabPosition.End
     ) { padding ->
         Column(
             modifier = Modifier
@@ -83,6 +90,7 @@ fun EventsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -106,7 +114,7 @@ fun EventsScreen(
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                     ) {
                         Text(
-                            text = "${uiState.summaries.size} Active",
+                            text = "${uiState.activeCount} Active",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -114,6 +122,25 @@ fun EventsScreen(
                         )
                     }
                 }
+            }
+
+            // Active / Archived Filter Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = !uiState.showArchived,
+                    onClick = { viewModel.setShowArchived(false) },
+                    label = { Text("Active (${uiState.activeCount})", fontSize = 12.sp) }
+                )
+                FilterChip(
+                    selected = uiState.showArchived,
+                    onClick = { viewModel.setShowArchived(true) },
+                    label = { Text("Archived (${uiState.archivedCount})", fontSize = 12.sp) }
+                )
             }
 
             if (uiState.isLoading) {
@@ -150,7 +177,7 @@ fun EventsScreen(
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(10.dp),
+                    contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -209,13 +236,30 @@ fun EventCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = summary.event.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = summary.event.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (summary.event.isArchived) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                            ) {
+                                Text(
+                                    text = "Archived",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
                     if (summary.event.description.isNotBlank()) {
                         Text(
                             text = summary.event.description,

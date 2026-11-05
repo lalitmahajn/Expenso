@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.stateIn
 
 data class AnalyticsUiState(
     val selectedPeriod: TimePeriodFilter = TimePeriodFilter.THIS_MONTH,
+    val customStartTime: Long? = null,
+    val customEndTime: Long? = null,
     val stats: OverallStats = OverallStats(),
     val categoryBreakdown: List<CategorySpendSummary> = emptyList(),
     val eventBreakdown: List<EventSpendSummary> = emptyList(),
@@ -38,13 +40,21 @@ class AnalyticsViewModel(
     private val _selectedPeriod = MutableStateFlow(TimePeriodFilter.THIS_MONTH)
     val selectedPeriod = _selectedPeriod.asStateFlow()
 
+    private val _customRange = MutableStateFlow<Pair<Long, Long>?>(null)
+    val customRange = _customRange.asStateFlow()
+
     val uiState: StateFlow<AnalyticsUiState> = combine(
         _selectedPeriod,
+        _customRange,
         userPreferences.currency
-    ) { period, currency ->
-        Pair(period, currency)
-    }.flatMapLatest { (period, currency) ->
-        val range = analyticsRepository.getTimeRange(period)
+    ) { period, custom, currency ->
+        Triple(period, custom, currency)
+    }.flatMapLatest { (period, custom, currency) ->
+        val range = if (period == TimePeriodFilter.CUSTOM && custom != null) {
+            analyticsRepository.getTimeRange(period, custom.first, custom.second)
+        } else {
+            analyticsRepository.getTimeRange(period)
+        }
         combine(
             analyticsRepository.getOverallStats(range.startTime, range.endTime),
             analyticsRepository.getCategoryBreakdown(range.startTime, range.endTime),
@@ -53,6 +63,8 @@ class AnalyticsViewModel(
         ) { stats, categories, events, payments ->
             AnalyticsUiState(
                 selectedPeriod = period,
+                customStartTime = custom?.first,
+                customEndTime = custom?.second,
                 stats = stats,
                 categoryBreakdown = categories,
                 eventBreakdown = events,
@@ -69,6 +81,11 @@ class AnalyticsViewModel(
 
     fun selectPeriod(period: TimePeriodFilter) {
         _selectedPeriod.value = period
+    }
+
+    fun setCustomDateRange(startTime: Long, endTime: Long) {
+        _customRange.value = Pair(startTime, endTime)
+        _selectedPeriod.value = TimePeriodFilter.CUSTOM
     }
 
     companion object {

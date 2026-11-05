@@ -83,6 +83,13 @@ class AccountViewModel(
         }
     }
 
+    fun transferFunds(fromAccountId: Long, toAccountId: Long, amount: Double) {
+        if (fromAccountId == toAccountId || amount <= 0.0) return
+        viewModelScope.launch {
+            accountRepository.transferFunds(fromAccountId, toAccountId, amount)
+        }
+    }
+
     fun createAccount(
         name: String,
         type: AccountType,

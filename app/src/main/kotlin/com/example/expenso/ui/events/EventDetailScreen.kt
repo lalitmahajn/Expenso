@@ -24,7 +24,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ReceiptLong
@@ -48,6 +51,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -66,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,7 +94,9 @@ fun EventDetailScreen(
     val scope = rememberCoroutineScope()
     val addSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showAddExpenseSheet by remember { mutableStateOf(false) }
+    var expenseToEdit by remember { mutableStateOf<ExpenseWithDetails?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var expenseToDelete by remember { mutableStateOf<ExpenseEntity?>(null) }
 
     // System Back Gesture/Button
     BackHandler {
@@ -132,6 +141,14 @@ fun EventDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleArchiveEvent(event) }) {
+                        Icon(
+                            imageVector = if (event.isArchived) Icons.Default.Unarchive else Icons.Default.Archive,
+                            contentDescription = if (event.isArchived) "Unarchive Function" else "Archive Function",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     IconButton(onClick = { showDeleteConfirmDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
@@ -148,7 +165,10 @@ fun EventDetailScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showAddExpenseSheet = true },
+                onClick = {
+                    expenseToEdit = null
+                    showAddExpenseSheet = true
+                },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape,
@@ -162,11 +182,39 @@ fun EventDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 1. DENSE UNIFIED BUDGET & METRICS BANNER
             item {
+                if (event.isArchived) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "This event is marked as Completed / Archived",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            TextButton(
+                                onClick = { viewModel.toggleArchiveEvent(event) },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                            ) {
+                                Text("Restore", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -470,7 +518,7 @@ fun EventDetailScreen(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
-                                imageVector = Icons.Default.ReceiptLong,
+                                imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(36.dp)
@@ -486,11 +534,62 @@ fun EventDetailScreen(
                 }
             } else {
                 items(uiState.filteredExpenses, key = { it.expense.id }) { item ->
-                    DenseExpenseRow(
-                        item = item,
-                        currency = uiState.currency,
-                        onDelete = { viewModel.deleteExpense(item.expense) }
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { dismissValue ->
+                            if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
+                                expenseToDelete = item.expense
+                                false
+                            } else false
+                        }
                     )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        enableDismissFromEndToStart = true,
+                        backgroundContent = {
+                            val color = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) {
+                                MaterialTheme.colorScheme.errorContainer
+                            } else {
+                                Color.Transparent
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(color)
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Delete",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Delete",
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    ) {
+                        DenseExpenseRow(
+                            item = item,
+                            currency = uiState.currency,
+                            onClick = {
+                                expenseToEdit = item
+                                showAddExpenseSheet = true
+                            }
+                        )
+                    }
                 }
             }
 
@@ -508,15 +607,23 @@ fun EventDetailScreen(
             events = listOf(event),
             accounts = uiState.allAccounts,
             currency = uiState.currency,
+            initialExpense = expenseToEdit,
             onDismiss = {
                 scope.launch { addSheetState.hide() }.invokeOnCompletion {
                     showAddExpenseSheet = false
+                    expenseToEdit = null
                 }
             },
             onSave = { title, amount, categoryId, _, paymentMethod, note, accountId ->
-                viewModel.addExpenseToEvent(title, amount, categoryId, paymentMethod, note, accountId)
+                val editing = expenseToEdit
+                if (editing != null) {
+                    viewModel.updateEventExpense(editing.expense, title, amount, categoryId, paymentMethod, note, accountId)
+                } else {
+                    viewModel.addExpenseToEvent(title, amount, categoryId, paymentMethod, note, accountId)
+                }
                 scope.launch { addSheetState.hide() }.invokeOnCompletion {
                     showAddExpenseSheet = false
+                    expenseToEdit = null
                 }
             },
             onAddCategory = { name, iconName, colorHex, callback ->
@@ -552,6 +659,97 @@ fun EventDetailScreen(
             }
         )
     }
+
+    // Swipe-to-Delete Expense Confirmation Dialog
+    expenseToDelete?.let { expense ->
+        AlertDialog(
+            onDismissRequest = { expenseToDelete = null },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = "Delete Expense?",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = expense.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = Formatters.formatAmount(expense.amount, uiState.currency),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "This item will be permanently removed and your event total and account balance will be automatically recalculated.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteExpense(expense)
+                        expenseToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { expenseToDelete = null },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -582,17 +780,19 @@ private fun DenseStatCell(
 fun DenseExpenseRow(
     item: ExpenseWithDetails,
     currency: String,
-    onDelete: () -> Unit
+    onClick: () -> Unit
 ) {
     val category = item.category
     val catColor = category?.let { Formatters.parseColor(it.colorHex) } ?: Color(0xFF607D8B)
-    val icon = category?.let { Formatters.getCategoryIcon(it.iconName) } ?: Icons.Default.ReceiptLong
+    val icon = category?.let { Formatters.getCategoryIcon(it.iconName) } ?: Icons.AutoMirrored.Filled.ReceiptLong
 
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier
@@ -640,9 +840,9 @@ fun DenseExpenseRow(
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            // Amount and Delete
+            // Amount
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = Formatters.formatAmount(item.expense.amount, currency),
@@ -650,20 +850,6 @@ fun DenseExpenseRow(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.error
-                )
-            }
-
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier
-                    .padding(start = 4.dp)
-                    .size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(15.dp)
                 )
             }
         }

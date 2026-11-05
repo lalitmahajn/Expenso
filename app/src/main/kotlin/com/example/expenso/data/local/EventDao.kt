@@ -17,6 +17,9 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE isArchived = 0 ORDER BY startDate DESC")
     fun getActiveEvents(): Flow<List<EventEntity>>
 
+    @Query("SELECT * FROM events WHERE isArchived = 1 ORDER BY startDate DESC")
+    fun getArchivedEvents(): Flow<List<EventEntity>>
+
     @Query("SELECT * FROM events WHERE id = :id LIMIT 1")
     fun getEventById(id: Long): Flow<EventEntity?>
 
@@ -28,6 +31,9 @@ interface EventDao {
 
     @Delete
     suspend fun deleteEvent(event: EventEntity): Int
+
+    @Query("UPDATE events SET isArchived = :isArchived WHERE id = :id")
+    suspend fun setEventArchived(id: Long, isArchived: Boolean): Int
 
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM expenses WHERE eventId = :eventId")
     fun getEventTotalSpent(eventId: Long): Flow<Double>

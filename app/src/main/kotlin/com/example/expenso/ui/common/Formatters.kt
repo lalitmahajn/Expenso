@@ -86,7 +86,11 @@ object Formatters {
     )
 
     fun formatAmount(amount: Double, currency: String = "$"): String {
-        return "$currency${decimalFormat.format(amount)}"
+        return if (amount < 0) {
+            "-$currency${decimalFormat.format(kotlin.math.abs(amount))}"
+        } else {
+            "$currency${decimalFormat.format(amount)}"
+        }
     }
 
     fun formatDate(timestamp: Long): String {
