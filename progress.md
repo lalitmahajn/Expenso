@@ -74,7 +74,27 @@
   - Active custom range badge with one-tap "Change" action.
 - **Detailed Aggregates:** Total spend, average per item, peak transaction, transaction count, category breakdown progress bars, event allocations, and payment method distribution.
 
-### E. Theme, System Navigation & App Customization (`Theme.kt`, `SettingsScreen.kt`)
+### E. Dedicated Financial Statement Generator (`GenerateStatementScreen.kt`, `StatementPdfHelper.kt`, `StatementCsvHelper.kt`)
+- **Dedicated Settings Hub:** Accessible directly from `Settings` ➔ `Generate Financial Statement`.
+- **Flexible Scope & Filter Engine:**
+  - **Time Periods:** `This Month`, `Last Month`, `Last 30 Days`, `Last 90 Days`, `This Year`, `All Time`, plus `Custom Date Range` with quick presets (7d, 14d, 60d, 180d, 1y).
+  - **Account Filter:** Generate statements for all accounts or isolate single accounts (e.g. *Main Bank*, *Cash in Hand*, *Credit Card*).
+  - **Occasion / Event Filter:** Filter exclusively for a trip or function (e.g. *Goa Road Trip*, *Wedding*).
+  - **Category Filter:** Multi-select category dialog to generate statements for specific expenditure types (e.g. only *Business*, *Bills*, *Travel*).
+- **Live Summary & Dense Preview:**
+  - Real-time outflow sum, transaction count, and active scope badges.
+  - Live 5-item preview list with color badges and count indicator.
+- **Native Offline PDF Engine (`StatementPdfHelper.kt`):**
+  - Uses native Android `PdfDocument` (zero third-party dependencies, 100% offline & private).
+  - Multi-page pagination support with A4 dimensions.
+  - Professional bank-grade executive summary card, metadata header, alternating zebra striped table with column dividers, and page footers.
+- **Structured CSV Engine (`StatementCsvHelper.kt`):**
+  - Formatted CSV spreadsheet with metadata header comments and escaped columns for Excel, Google Sheets, or CA accounting.
+- **Action Options:**
+  - "Preview" (opens system PDF/CSV viewer via `FileProvider`).
+  - "Share Statement" (launches Android Sharesheet for WhatsApp, Email, Drive).
+
+### F. Theme, System Navigation & App Customization (`Theme.kt`, `SettingsScreen.kt`)
 - **Seamless Edge-to-Edge & Status Bar Theming:** Inset zeroing across inner scaffolds; headers extend behind the status bar with matching dynamic icons (`isAppearanceLightStatusBars`).
 - **Theme Selection / Dark Mode:** Choose between "System Default", "Light Mode", and "Dark Mode" with persistent preference.
 - **Currency Preferences & Formatting:** Switch between `₹` (INR), `$` (USD), `€` (EUR), `£` (GBP), `¥` (JPY), `₩`, `A$`, `C$`, and `Fr` with proper negative currency sign placement (`-$X.XX`).

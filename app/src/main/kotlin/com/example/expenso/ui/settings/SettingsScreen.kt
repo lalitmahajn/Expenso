@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
@@ -67,7 +68,8 @@ import com.example.expenso.ui.common.Formatters
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
-    viewModel: SettingsViewModel
+    viewModel: SettingsViewModel,
+    onNavigateToStatement: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentCurrency by viewModel.currency.collectAsState()
@@ -148,6 +150,13 @@ fun SettingsScreen(
                 text = "Data Management",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
+            )
+
+            SettingItemCard(
+                icon = Icons.Default.Description,
+                title = "Generate Financial Statement",
+                subtitle = "Custom PDF & CSV reports filtered by date, account, or occasion",
+                onClick = onNavigateToStatement
             )
 
             SettingItemCard(

@@ -31,6 +31,8 @@ import com.example.expenso.ui.expenses.ExpensesScreen
 import com.example.expenso.ui.navigation.BottomNavScreen
 import com.example.expenso.ui.settings.SettingsScreen
 import com.example.expenso.ui.settings.SettingsViewModel
+import com.example.expenso.ui.statement.GenerateStatementScreen
+import com.example.expenso.ui.statement.StatementViewModel
 
 @Composable
 fun ExpensoMainScreen() {
@@ -83,6 +85,18 @@ fun ExpensoMainScreen() {
         )
     )
 
+    val statementViewModel: StatementViewModel = viewModel(
+        factory = StatementViewModel.provideFactory(
+            container.expenseRepository,
+            container.accountRepository,
+            container.eventRepository,
+            container.categoryRepository,
+            container.userPreferences
+        )
+    )
+
+    var isStatementOpen by remember { mutableStateOf(false) }
+
     val eventUiState by eventViewModel.uiState.collectAsState()
     val isEventDetailOpen = eventUiState.selectedEventId != null
 
@@ -91,6 +105,12 @@ fun ExpensoMainScreen() {
         EventDetailScreen(
             viewModel = eventViewModel,
             onBack = { eventViewModel.selectEvent(null) }
+        )
+    } else if (isStatementOpen) {
+        // Open Dedicated Full-Screen for Generate Financial Statement
+        GenerateStatementScreen(
+            viewModel = statementViewModel,
+            onBack = { isStatementOpen = false }
         )
     } else {
         Scaffold(
@@ -124,7 +144,10 @@ fun ExpensoMainScreen() {
                     is BottomNavScreen.Events -> EventsScreen(viewModel = eventViewModel)
                     is BottomNavScreen.Accounts -> AccountsScreen(viewModel = accountViewModel)
                     is BottomNavScreen.Analytics -> AnalyticsScreen(viewModel = analyticsViewModel)
-                    is BottomNavScreen.Settings -> SettingsScreen(viewModel = settingsViewModel)
+                    is BottomNavScreen.Settings -> SettingsScreen(
+                        viewModel = settingsViewModel,
+                        onNavigateToStatement = { isStatementOpen = true }
+                    )
                 }
             }
         }
