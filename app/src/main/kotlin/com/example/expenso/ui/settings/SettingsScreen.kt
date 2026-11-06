@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.AlertDialog
@@ -157,19 +156,6 @@ fun SettingsScreen(
                 title = "Generate Financial Statement",
                 subtitle = "Custom PDF & CSV reports filtered by date, account, or occasion",
                 onClick = onNavigateToStatement
-            )
-
-            SettingItemCard(
-                icon = Icons.Default.FileDownload,
-                title = "Export to CSV",
-                subtitle = "Export all expenses and functions to a spreadsheet file",
-                onClick = {
-                    viewModel.exportToCsv(context) { success ->
-                        if (!success) {
-                            Toast.makeText(context, "Failed to export CSV", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
             )
 
             SettingItemCard(

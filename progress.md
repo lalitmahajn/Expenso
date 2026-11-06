@@ -99,7 +99,7 @@
 - **Theme Selection / Dark Mode:** Choose between "System Default", "Light Mode", and "Dark Mode" with persistent preference.
 - **Currency Preferences & Formatting:** Switch between `₹` (INR), `$` (USD), `€` (EUR), `£` (GBP), `¥` (JPY), `₩`, `A$`, `C$`, and `Fr` with proper negative currency sign placement (`-$X.XX`).
 - **Custom Category Manager:** Add custom categories with color picker; delete custom categories.
-- **CSV Data Export:** Export full expense history to a shareable `.csv` file via Android Sharesheet.
+- **Data Portability:** Consolidated under "Generate Financial Statement" (supports comprehensive and filtered PDF and CSV reports).
 - **Sample Data Seeding:** One-tap demo dataset for quick evaluation.
 
 ---
