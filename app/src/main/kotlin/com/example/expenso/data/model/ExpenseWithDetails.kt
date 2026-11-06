@@ -23,5 +23,11 @@ data class ExpenseWithDetails(
         parentColumn = "accountId",
         entityColumn = "id"
     )
-    val account: AccountEntity? = null
+    val account: AccountEntity? = null,
+
+    @Relation(
+        parentColumn = "toAccountId",
+        entityColumn = "id"
+    )
+    val toAccount: AccountEntity? = null
 )

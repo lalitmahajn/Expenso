@@ -35,9 +35,9 @@ interface EventDao {
     @Query("UPDATE events SET isArchived = :isArchived WHERE id = :id")
     suspend fun setEventArchived(id: Long, isArchived: Boolean): Int
 
-    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM expenses WHERE eventId = :eventId")
+    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM expenses WHERE eventId = :eventId AND transactionType = 'EXPENSE'")
     fun getEventTotalSpent(eventId: Long): Flow<Double>
 
-    @Query("SELECT COUNT(*) FROM expenses WHERE eventId = :eventId")
+    @Query("SELECT COUNT(*) FROM expenses WHERE eventId = :eventId AND transactionType = 'EXPENSE'")
     fun getEventTransactionCount(eventId: Long): Flow<Int>
 }

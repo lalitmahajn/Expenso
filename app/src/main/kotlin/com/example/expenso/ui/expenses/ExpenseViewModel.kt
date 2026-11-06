@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.expenso.data.model.TransactionType
+
 data class ExpensesUiState(
     val expenses: List<ExpenseWithDetails> = emptyList(),
     val categories: List<CategoryEntity> = emptyList(),
@@ -32,6 +34,7 @@ data class ExpensesUiState(
     val selectedEventId: Long? = null,
     val currency: String = "$",
     val totalAmount: Double = 0.0,
+    val totalIncome: Double = 0.0,
     val isLoading: Boolean = false
 )
 
@@ -91,6 +94,9 @@ class ExpenseViewModel(
             matchesQuery && matchesCategory && matchesEvent
         }
 
+        val totalExpenses = filtered.filter { it.expense.transactionType == TransactionType.EXPENSE }.sumOf { it.expense.amount }
+        val totalIncome = filtered.filter { it.expense.transactionType == TransactionType.INCOME }.sumOf { it.expense.amount }
+
         ExpensesUiState(
             expenses = filtered,
             categories = categories,
@@ -100,7 +106,8 @@ class ExpenseViewModel(
             selectedCategoryId = filters.categoryId,
             selectedEventId = filters.eventId,
             currency = accCurr.currency,
-            totalAmount = filtered.sumOf { it.expense.amount },
+            totalAmount = totalExpenses,
+            totalIncome = totalIncome,
             isLoading = false
         )
     }.stateIn(
@@ -197,11 +204,85 @@ class ExpenseViewModel(
         }
     }
 
+    fun addIncome(
+        title: String,
+        amount: Double,
+        categoryId: Long,
+        accountId: Long?,
+        paymentMethod: PaymentMethod = PaymentMethod.BANK_TRANSFER,
+        note: String = "",
+        eventId: Long? = null,
+        timestamp: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch {
+            val income = ExpenseEntity(
+                title = title.trim(),
+                amount = amount,
+                categoryId = categoryId,
+                eventId = eventId,
+                accountId = accountId,
+                toAccountId = null,
+                transactionType = TransactionType.INCOME,
+                paymentMethod = paymentMethod,
+                note = note.trim(),
+                timestamp = timestamp
+            )
+            expenseRepository.insertExpense(income)
+
+            if (accountId != null) {
+                accountRepository.creditAccount(accountId, amount)
+            }
+        }
+    }
+
+    fun addTransfer(
+        amount: Double,
+        fromAccountId: Long,
+        toAccountId: Long,
+        note: String = "",
+        timestamp: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch {
+            val fromAcc = accountRepository.getAccountById(fromAccountId)
+            val toAcc = accountRepository.getAccountById(toAccountId)
+            val transferTitle = "Transfer: ${fromAcc?.name ?: "Account"} ➔ ${toAcc?.name ?: "Account"}"
+
+            val transfer = ExpenseEntity(
+                title = transferTitle,
+                amount = amount,
+                categoryId = 10,
+                eventId = null,
+                accountId = fromAccountId,
+                toAccountId = toAccountId,
+                transactionType = TransactionType.TRANSFER,
+                paymentMethod = PaymentMethod.BANK_TRANSFER,
+                note = note.trim(),
+                timestamp = timestamp
+            )
+            expenseRepository.insertExpense(transfer)
+            accountRepository.transferFunds(fromAccountId, toAccountId, amount)
+        }
+    }
+
     fun deleteExpense(expense: ExpenseEntity) {
         viewModelScope.launch {
             expenseRepository.deleteExpense(expense)
-            if (expense.accountId != null) {
-                accountRepository.creditAccount(expense.accountId, expense.amount)
+            when (expense.transactionType) {
+                TransactionType.EXPENSE -> {
+                    if (expense.accountId != null) {
+                        accountRepository.creditAccount(expense.accountId, expense.amount)
+                    }
+                }
+                TransactionType.INCOME -> {
+                    if (expense.accountId != null) {
+                        accountRepository.debitAccount(expense.accountId, expense.amount)
+                    }
+                }
+                TransactionType.TRANSFER -> {
+                    if (expense.accountId != null && expense.toAccountId != null) {
+                        accountRepository.transferFunds(expense.toAccountId, expense.accountId, expense.amount)
+                    }
+                }
             }
         }
     }

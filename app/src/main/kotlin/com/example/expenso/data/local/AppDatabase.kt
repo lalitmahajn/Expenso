@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
         CategoryEntity::class,
         AccountEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -60,6 +60,40 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `expenses_new` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`amount` REAL NOT NULL, " +
+                        "`categoryId` INTEGER NOT NULL, " +
+                        "`eventId` INTEGER, " +
+                        "`accountId` INTEGER, " +
+                        "`toAccountId` INTEGER, " +
+                        "`transactionType` TEXT NOT NULL DEFAULT 'EXPENSE', " +
+                        "`timestamp` INTEGER NOT NULL, " +
+                        "`paymentMethod` TEXT NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , " +
+                        "FOREIGN KEY(`eventId`) REFERENCES `events`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , " +
+                        "FOREIGN KEY(`accountId`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , " +
+                        "FOREIGN KEY(`toAccountId`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )"
+                )
+                db.execSQL(
+                    "INSERT INTO `expenses_new` (`id`, `title`, `amount`, `categoryId`, `eventId`, `accountId`, `toAccountId`, `transactionType`, `timestamp`, `paymentMethod`, `note`) " +
+                        "SELECT `id`, `title`, `amount`, `categoryId`, `eventId`, `accountId`, NULL, 'EXPENSE', `timestamp`, `paymentMethod`, `note` FROM `expenses`"
+                )
+                db.execSQL("DROP TABLE `expenses`")
+                db.execSQL("ALTER TABLE `expenses_new` RENAME TO `expenses`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_categoryId` ON `expenses` (`categoryId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_eventId` ON `expenses` (`eventId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_accountId` ON `expenses` (`accountId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_toAccountId` ON `expenses` (`toAccountId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_timestamp` ON `expenses` (`timestamp`)")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -67,7 +101,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "expenso_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .addCallback(DatabaseCallback(scope))
                     .build()

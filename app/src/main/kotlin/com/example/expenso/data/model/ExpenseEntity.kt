@@ -26,12 +26,19 @@ import androidx.room.PrimaryKey
             parentColumns = ["id"],
             childColumns = ["accountId"],
             onDelete = ForeignKey.SET_NULL
+        ),
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["toAccountId"],
+            onDelete = ForeignKey.SET_NULL
         )
     ],
     indices = [
         Index("categoryId"),
         Index("eventId"),
         Index("accountId"),
+        Index("toAccountId"),
         Index("timestamp")
     ]
 )
@@ -43,6 +50,8 @@ data class ExpenseEntity(
     val categoryId: Long,
     val eventId: Long? = null,
     val accountId: Long? = null,
+    val toAccountId: Long? = null,
+    val transactionType: TransactionType = TransactionType.EXPENSE,
     val timestamp: Long = System.currentTimeMillis(),
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
     val note: String = ""

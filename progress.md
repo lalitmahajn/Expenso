@@ -24,16 +24,18 @@
 
 ## 2. Completed Features & Capabilities
 
-### A. High-Density Expense Tracking (`ExpensesScreen.kt`, `AddExpenseBottomSheet.kt`)
-- **Dense Transaction Rows:** 44dp compact item heights displaying category icon badge, expense title, payment method, date/time, and colored amount.
+### A. Unified Multi-Tab Transaction Logging (`ExpensesScreen.kt`, `AddExpenseBottomSheet.kt`)
+- **3-in-1 FAB Action:** The `+` button opens a unified transaction modal with 3 top segmented tabs:
+  - **Expense Tab:** Hero amount card with merchant/title, category chips, optional account debiting, payment method, and event linking.
+  - **Income Tab:** Emerald green styled hero amount card (`+ $0.00`), deposit-into-account selector with live balances, income source category chips, received-via method chips, and automatic account balance crediting.
+  - **Transfer Tab:** Blue styled hero amount card (`➔ $0.00`), intuitive From-Account (debit) and To-Account (credit) selectors with validation, transfer reference/notes, and atomic fund movement.
+- **Dense Transaction Rows:** 44dp compact item heights displaying:
+  - **Expenses:** Red/primary amount, category icon badge.
+  - **Income:** Emerald green amount (`+$X.XX`), trending-up badge, deposited account subtitle.
+  - **Transfers:** Blue amount, transfer icon badge, `From ➔ To` account path subtitle.
 - **Dedicated Event Badges:** Tagged occasions and functions displayed cleanly on their own formatted row with calendar icons.
-- **Swipe-to-Delete Gesture:** Intuitive left-swipe on transaction cards with a custom styled confirmation card dialog highlighting the exact deletion amount.
-- **Sleek 42dp Search Pill:** Compact rounded search bar with clear button.
-- **Redesigned Modern Fintech Bottom Sheet:**
-  - Modern Apple Card / Revolut-style hero amount card (`$ 0.00`) with inline merchant/title field separated by a subtle divider.
-  - Zero-scroll viewport layout (~450dp height) fitting all controls on screen at once.
-  - Single horizontal `LazyRow` compact chips for categories, accounts (with live balances), payment methods, and events.
-  - Dynamic button preview (e.g. `Record Expense • $45.50`).
+- **Swipe-to-Delete Gesture:** Intuitive left-swipe on transaction cards with confirmation dialog and automatic balance reversal (refunding debited accounts, reverting income credits, or reversing transfers).
+- **Sleek 42dp Search Pill & Filter Chips:** Compact rounded search bar with clear button and category chips.
 - **Consistent Floating Action Buttons:** Unified 48dp circular FABs across Expenses, Events, and Accounts screens.
 
 ### B. Dedicated Function & Event Budgeting (`EventsScreen.kt`, `EventDetailScreen.kt`)
@@ -107,7 +109,7 @@
 ## 3. Database Schema & Architecture
 
 ### Database Name: `expenso_database`
-**Current Version:** `2`
+**Current Version:** `3`
 
 #### Entities
 1. **`categories`** (`CategoryEntity`)
@@ -143,9 +145,15 @@
    - `categoryId: Long` (FK -> `categories.id` ON DELETE RESTRICT)
    - `eventId: Long?` (FK -> `events.id` ON DELETE SET NULL)
    - `accountId: Long?` (FK -> `accounts.id` ON DELETE SET NULL)
+   - `toAccountId: Long?` (FK -> `accounts.id` ON DELETE SET NULL)
+   - `transactionType: TransactionType` (EXPENSE, INCOME, TRANSFER)
    - `paymentMethod: PaymentMethod` (CASH, CARD, UPI, BANK_TRANSFER, OTHER)
    - `timestamp: Long`
    - `note: String`
+
+#### Migrations
+- **`MIGRATION_1_2`**: Added `accounts` table and linked foreign key to expenses.
+- **`MIGRATION_2_3`**: Added `toAccountId` and `transactionType` with full foreign keys and indices.
 
 ---
 

@@ -41,13 +41,13 @@ interface ExpenseDao {
     @Delete
     suspend fun deleteExpense(expense: ExpenseEntity): Int
 
-    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM expenses WHERE timestamp BETWEEN :startTime AND :endTime")
+    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM expenses WHERE transactionType = 'EXPENSE' AND timestamp BETWEEN :startTime AND :endTime")
     fun getTotalSpentBetween(startTime: Long, endTime: Long): Flow<Double>
 
-    @Query("SELECT COUNT(*) FROM expenses WHERE timestamp BETWEEN :startTime AND :endTime")
+    @Query("SELECT COUNT(*) FROM expenses WHERE transactionType = 'EXPENSE' AND timestamp BETWEEN :startTime AND :endTime")
     fun getTransactionCountBetween(startTime: Long, endTime: Long): Flow<Int>
 
-    @Query("SELECT COALESCE(MAX(amount), 0.0) FROM expenses WHERE timestamp BETWEEN :startTime AND :endTime")
+    @Query("SELECT COALESCE(MAX(amount), 0.0) FROM expenses WHERE transactionType = 'EXPENSE' AND timestamp BETWEEN :startTime AND :endTime")
     fun getMaxExpenseBetween(startTime: Long, endTime: Long): Flow<Double>
 
     @Query("SELECT COUNT(*) FROM expenses")

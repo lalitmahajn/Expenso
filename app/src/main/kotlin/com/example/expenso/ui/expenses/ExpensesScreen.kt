@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.TrendingUp
+import com.example.expenso.data.model.TransactionType
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -148,17 +151,37 @@ fun ExpensesScreen(
                                 fontWeight = FontWeight.ExtraBold
                             )
                         }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "${uiState.expenses.size} transactions",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                            if (uiState.totalIncome > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF2E7D32).copy(alpha = 0.14f)
+                                ) {
+                                    Text(
+                                        text = "+${Formatters.formatAmount(uiState.totalIncome, uiState.currency)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF2E7D32),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = "${uiState.expenses.size} transactions",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -416,6 +439,20 @@ fun ExpensesScreen(
                         expenseToEdit = null
                     }
                 },
+                onSaveIncome = { title, amount, categoryId, accountId, paymentMethod, note, eventId ->
+                    viewModel.addIncome(title, amount, categoryId, accountId, paymentMethod, note, eventId)
+                    scope.launch { sheetState.hide() }.invokeOnCompletion {
+                        showAddSheet = false
+                        expenseToEdit = null
+                    }
+                },
+                onSaveTransfer = { amount, fromAccountId, toAccountId, note ->
+                    viewModel.addTransfer(amount, fromAccountId, toAccountId, note)
+                    scope.launch { sheetState.hide() }.invokeOnCompletion {
+                        showAddSheet = false
+                        expenseToEdit = null
+                    }
+                },
                 onAddCategory = { name, iconName, colorHex, callback ->
                     viewModel.addCategory(name, iconName, colorHex, callback)
                 }
@@ -522,8 +559,17 @@ fun ExpenseCard(
     onClick: () -> Unit
 ) {
     val category = item.category
-    val catColor = category?.let { Formatters.parseColor(it.colorHex) } ?: Color(0xFF607D8B)
-    val icon = category?.let { Formatters.getCategoryIcon(it.iconName) } ?: Icons.AutoMirrored.Filled.ReceiptLong
+    val catColor = when (item.expense.transactionType) {
+        TransactionType.EXPENSE -> category?.let { Formatters.parseColor(it.colorHex) } ?: Color(0xFF607D8B)
+        TransactionType.INCOME -> Color(0xFF2E7D32)
+        TransactionType.TRANSFER -> Color(0xFF1565C0)
+    }
+
+    val icon = when (item.expense.transactionType) {
+        TransactionType.EXPENSE -> category?.let { Formatters.getCategoryIcon(it.iconName) } ?: Icons.AutoMirrored.Filled.ReceiptLong
+        TransactionType.INCOME -> Icons.Default.TrendingUp
+        TransactionType.TRANSFER -> Icons.Default.SwapHoriz
+    }
 
     Card(
         shape = RoundedCornerShape(10.dp),
@@ -541,7 +587,7 @@ fun ExpenseCard(
                 .padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Category Icon Badge
+            // Category / Type Icon Badge
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -551,7 +597,7 @@ fun ExpenseCard(
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = category?.name,
+                    contentDescription = item.expense.title,
                     tint = catColor,
                     modifier = Modifier.size(18.dp)
                 )
@@ -571,8 +617,14 @@ fun ExpenseCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                val subtitle = when (item.expense.transactionType) {
+                    TransactionType.EXPENSE -> "${category?.name ?: "General"} • ${item.expense.paymentMethod.displayName}"
+                    TransactionType.INCOME -> "Income • ${item.account?.name ?: "Deposited"}"
+                    TransactionType.TRANSFER -> "Transfer • ${item.account?.name ?: "From"} ➔ ${item.toAccount?.name ?: "To"}"
+                }
+
                 Text(
-                    text = "${category?.name ?: "General"} • ${item.expense.paymentMethod.displayName}",
+                    text = subtitle,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -610,7 +662,7 @@ fun ExpenseCard(
                     }
                 }
 
-                if (item.expense.note.isNotBlank()) {
+                if (item.expense.note.isNotBlank() && item.expense.transactionType == TransactionType.EXPENSE) {
                     Text(
                         text = item.expense.note,
                         style = MaterialTheme.typography.labelSmall,
@@ -627,11 +679,17 @@ fun ExpenseCard(
             Column(
                 horizontalAlignment = Alignment.End
             ) {
+                val (amtStr, amtColor) = when (item.expense.transactionType) {
+                    TransactionType.EXPENSE -> Formatters.formatAmount(item.expense.amount, currency) to MaterialTheme.colorScheme.error
+                    TransactionType.INCOME -> "+${Formatters.formatAmount(item.expense.amount, currency)}" to Color(0xFF2E7D32)
+                    TransactionType.TRANSFER -> Formatters.formatAmount(item.expense.amount, currency) to Color(0xFF1565C0)
+                }
+
                 Text(
-                    text = Formatters.formatAmount(item.expense.amount, currency),
+                    text = amtStr,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error
+                    color = amtColor
                 )
                 Text(
                     text = Formatters.formatTime(item.expense.timestamp),
