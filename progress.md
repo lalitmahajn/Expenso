@@ -35,10 +35,29 @@
   - **Transfers:** Blue amount, transfer icon badge, `From ➔ To` account path subtitle.
 - **Dedicated Event Badges:** Tagged occasions and functions displayed cleanly on their own formatted row with calendar icons.
 - **Swipe-to-Delete Gesture:** Intuitive left-swipe on transaction cards with confirmation dialog and automatic balance reversal (refunding debited accounts, reverting income credits, or reversing transfers).
+- **Single Source of Truth Transaction Card (`ExpenseCard`):** Standardized across both ExpensesScreen and EventDetailScreen with soft-tinted pastel circle icon badges, dual-column amount/timestamp alignment, sub-event pill badges with accent colors, and identical 10dp card and swipe containers.
+- **Collapsible Sub-Events Section:** Animated accordion toggle on EventDetailScreen to expand/collapse sub-events and free up ~280dp of vertical space for transaction scanning.
+- **Reworked Analytics ("Unified Financial Cockpit"):** Replaced disjointed multi-card layout with a 4-in-1 consolidated hero card (Total Spend, Txns, Avg/Item, Peak Spend, Active Categories), a 3-way segmented breakdown selector (`Categories | Functions | Payments`), an integrated composition progress bar, and dense single-container cards (~60% vertical space saved).
+- **Hierarchical & Expandable Functions in Analytics:** Analytics > Functions rolls child sub-event expenses up into their parent events, displays the true total configured sub-event count (e.g. `4 sub-events`), and allows expanding to inspect each sub-event and general event allocations with individual progress bars.
+- **Universal Header Standardization:** Unified top banner layout, typography (`titleLarge`, `FontWeight.Bold`), subtitle typography (`labelSmall`), and padding (`horizontal = 16.dp, vertical = 10.dp`) across all 5 primary tabs (Expenses, Events, Accounts, Analytics, Settings).
 - **Sleek 42dp Search Pill & Filter Chips:** Compact rounded search bar with clear button and category chips.
 - **Consistent Floating Action Buttons:** Unified 48dp circular FABs across Expenses, Events, and Accounts screens.
 
 ### B. Dedicated Function & Event Budgeting (`EventsScreen.kt`, `EventDetailScreen.kt`)
+- **Hierarchical Multi-Phase Events (Parent Events & Sub-Events):**
+  - **Database & Room Migration 3->4 (`MIGRATION_3_4`):** Self-referencing foreign key on `events(id)` (`parentEventId: Long? = null`) with cascade deletion and index on `parentEventId`.
+  - **Rolled-Up Spend Calculations:** Parent events aggregate direct expenses + all child sub-event expenses in real-time.
+  - **Inline Mini-Accordion on Main Screen:** Parent cards show sub-events badge (e.g. `4 sub-events • ₹1,45,000 / ₹5,00,000`) and chevron toggle to unfold sub-event spends and mini-budget progress bars.
+  - **Dedicated Sub-Events Section in Detail Screen:** Add sub-events with Name, optional mini-budget target, date, and color accents.
+  - **Sub-Event Breakdown & Filtering:** Filter event transactions by specific sub-event or view all aggregated.
+  - **Cascade Deletion Lifecycle (Option B):** Deleting an event or sub-event deletes all linked child sub-events and expenses, reversing account debits/credits automatically with explicit safety warnings.
+- **Expanding Sub-Chips in Transaction Logger (`AddExpenseBottomSheet.kt`):**
+  - Selecting an event with sub-events unfolds a secondary chip row: `[General <Event>]`, `[Day 1]`, `[North Leg]`, `[Reception]`. Default remains parent level.
+- **Multi-Section Statements (`StatementPdfHelper.kt`, `StatementCsvHelper.kt`, `StatementViewModel.kt`):**
+  - **PDF Section 1:** Executive Summary & Category Breakdown.
+  - **PDF Section 2:** Sub-Events Breakdown (when filtered by event, comparing spends vs mini-budgets).
+  - **PDF Section 3:** Chronological Flat Ledger with `Event • Sub-Event` labeling.
+  - **CSV Export:** Dedicated `Event` and `Sub-Event` columns.
 - **Full-Screen Event Detail:** Dedicated full-screen view for granular event analysis with back navigation.
 - **Budget Metrics Strip:** Real-time metrics showing Total Spent, Target Budget, Remaining / Over-budget indicator, Avg/Item, and Highest Expense.
 - **Interactive Breakdown Filters:**
@@ -102,7 +121,9 @@
 - **Currency Preferences & Formatting:** Switch between `₹` (INR), `$` (USD), `€` (EUR), `£` (GBP), `¥` (JPY), `₩`, `A$`, `C$`, and `Fr` with proper negative currency sign placement (`-$X.XX`).
 - **Custom Category Manager:** Add custom categories with color picker; delete custom categories.
 - **Data Portability:** Consolidated under "Generate Financial Statement" (supports comprehensive and filtered PDF and CSV reports).
-- **Sample Data Seeding:** One-tap demo dataset for quick evaluation.
+- **Sample Data Seeding & Clearing:**
+  - One-tap demo dataset for instant evaluation.
+  - **Clear Demo / All Data Option:** Dedicated button with a safety confirmation dialog to permanently wipe all test transactions and custom events, with an option to reset account balances to defaults, leaving categories intact for an instant clean slate.
 
 ---
 
@@ -157,7 +178,48 @@
 
 ---
 
-## 4. How to Build, Test & Run
+## 4. Production Hardening & Skill-Driven Optimizations (November 2026)
+
+Applied targeted optimizations across the codebase derived from official Android CLI skills:
+
+1. **Back Navigation Resilience (`navigation-event`):**
+   - Integrated `BackHandler` in [`ExpensoMainScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/main/ExpensoMainScreen.kt) for event detail, statement generator, and multi-tab return to home tab (`Expenses`), preventing accidental app kills on system back swipe.
+   - Connected localized `BackHandler` within [`EventDetailScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/events/EventDetailScreen.kt) and [`GenerateStatementScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/statement/GenerateStatementScreen.kt).
+
+2. **Compose Performance & Lifecycle Collection (`jetpack-compose-performance`):**
+   - Converted 100% of state observation across all screens from `collectAsState()` to `collectAsStateWithLifecycle()` to pause flow collection when the app is backgrounded.
+   - Added explicit primitive `key` and `contentType` definitions to all `LazyColumn` and `LazyRow` containers across [`ExpensesScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/expenses/ExpensesScreen.kt), [`EventsScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/events/EventsScreen.kt), [`EventDetailScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/events/EventDetailScreen.kt), [`AccountsScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/accounts/AccountsScreen.kt), [`AnalyticsScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/analytics/AnalyticsScreen.kt), [`SettingsScreen.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/settings/SettingsScreen.kt), and [`AddExpenseBottomSheet.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/expenses/AddExpenseBottomSheet.kt).
+   - Precomputed and cached date-total sums inside `remember(uiState.expenses)` rather than executing `sumOf` inside the item layout composition pass.
+
+3. **Edge-to-Edge & IME Smoothing (`edge-to-edge`):**
+   - Corrected [`AndroidManifest.xml`](file:///d:/Learning/Project%20x/app/src/main/AndroidManifest.xml) by placing `android:windowSoftInputMode="adjustResize"` onto `<activity>` rather than `<application>`, ensuring the keyboard properly resizes windows.
+   - Applied `Modifier.imePadding()` and `Modifier.navigationBarsPadding()` to [`AddExpenseBottomSheet.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/ui/expenses/AddExpenseBottomSheet.kt) to keep save buttons and inputs above the soft keyboard.
+
+4. **Testing Infrastructure (`testing-setup`):**
+   - Created test double [`FakeAccountDao.kt`](file:///d:/Learning/Project%20x/app/src/test/kotlin/com/example/expenso/test/FakeAccountDao.kt) implementing `AccountDao`.
+   - Added unit test suite [`AccountRepositoryTest.kt`](file:///d:/Learning/Project%20x/app/src/test/kotlin/com/example/expenso/test/AccountRepositoryTest.kt) asserting account insertion, debits, credits, atomic fund transfers, direct balance updates, and sorted Flow emissions.
+   - Verified that `testDebugUnitTest` passes 100%.
+
+5. **Offline Database Backup & Restore (`BackupRestoreManager.kt`):**
+   - Created [`BackupRestoreManager.kt`](file:///d:/Learning/Project%20x/app/src/main/kotlin/com/example/expenso/data/backup/BackupRestoreManager.kt) enabling complete, portable, offline JSON backups of the Room database and user preferences.
+   - **Export Capabilities:**
+     - Save to Device / Google Drive via Android Storage Access Framework (`ActivityResultContracts.CreateDocument`).
+     - Share Backup File directly to WhatsApp, Gmail, Telegram, or Cloud via Android Share Sheet (`FileProvider`).
+   - **Restore Capabilities:**
+     - Open and inspect any Expenso backup document via Storage Access Framework (`ActivityResultContracts.OpenDocument`).
+     - Pre-restoration verification dialog showing timestamp, transaction count, accounts, events, and currency.
+     - Atomic restoration inside `database.withTransaction`: resets tables, restores categories, accounts, hierarchical parent/child events, and all transaction entries (expenses, incomes, transfers), updating reactive UI state in real-time.
+   - Added unit test suite [`BackupDataTest.kt`](file:///d:/Learning/Project%20x/app/src/test/kotlin/com/example/expenso/test/BackupDataTest.kt) asserting backup schema consistency and JSON serialization/deserialization.
+
+6. **Production Adaptive App Icon (Material Design & Android 13+ Themed Icons):**
+   - Replaced generic template with high-contrast, modern fintech identity:
+     - **Background (`ic_launcher_background.xml`):** Luminous Emerald & Jade diagonal gradient (`#00D26A` -> `#059669` -> `#047857` -> `#064E3B`) with specular radial glow.
+     - **Foreground (`ic_launcher_foreground.xml`):** Crisp, bold white geometric "E" lettermark with 5dp corner rounding and subtle drop shadow, precisely centered within the 66dp safe zone.
+     - **Themed Icons (`ic_launcher_monochrome.xml`):** Full vector layer support for Android 13+ Material You dynamic color tinting.
+
+---
+
+## 5. How to Build, Test & Run
 
 ### Prerequisites
 - **Android SDK:** Installed at `%LOCALAPPDATA%\Android\Sdk` (configured in `local.properties`)

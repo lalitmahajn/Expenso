@@ -39,4 +39,9 @@ class AccountRepository(private val accountDao: AccountDao) {
             accountDao.insertAll(AppDatabase.DEFAULT_ACCOUNTS)
         }
     }
+
+    suspend fun resetToDefaultAccounts() {
+        accountDao.deleteAllAccounts()
+        accountDao.insertAll(AppDatabase.DEFAULT_ACCOUNTS)
+    }
 }

@@ -14,6 +14,7 @@ import com.example.expenso.data.model.ExpenseWithDetails
 import com.example.expenso.data.model.OverallStats
 import com.example.expenso.data.model.PaymentMethod
 import com.example.expenso.data.model.PaymentMethodSummary
+import com.example.expenso.data.model.TransactionType
 import com.example.expenso.data.preferences.UserPreferences
 import com.example.expenso.data.repository.AccountRepository
 import com.example.expenso.data.repository.CategoryRepository
@@ -31,6 +32,7 @@ data class EventsUiState(
     val summaries: List<EventSpendSummary> = emptyList(),
     val currency: String = "$",
     val selectedEventId: Long? = null,
+    val selectedParentEvent: EventEntity? = null,
     val selectedEventSummary: EventSpendSummary? = null,
     val selectedEventExpenses: List<ExpenseWithDetails> = emptyList(),
     val filteredExpenses: List<ExpenseWithDetails> = emptyList(),
@@ -39,9 +41,11 @@ data class EventsUiState(
     val stats: OverallStats = OverallStats(),
     val allCategories: List<CategoryEntity> = emptyList(),
     val allAccounts: List<AccountEntity> = emptyList(),
+    val allEvents: List<EventEntity> = emptyList(),
     val searchQuery: String = "",
     val filterCategoryId: Long? = null,
     val filterPaymentMethod: PaymentMethod? = null,
+    val filterSubEventId: Long? = null,
     val sortOption: EventSortOption = EventSortOption.NEWEST,
     val showArchived: Boolean = false,
     val activeCount: Int = 0,
@@ -66,6 +70,7 @@ class EventViewModel(
     private val _detailSearchQuery = MutableStateFlow("")
     private val _detailCategoryId = MutableStateFlow<Long?>(null)
     private val _detailPaymentMethod = MutableStateFlow<PaymentMethod?>(null)
+    private val _detailSubEventId = MutableStateFlow<Long?>(null)
     private val _detailSortOption = MutableStateFlow(EventSortOption.NEWEST)
 
     private data class DetailFilterParams(
@@ -73,6 +78,7 @@ class EventViewModel(
         val query: String,
         val categoryId: Long?,
         val paymentMethod: PaymentMethod?,
+        val subEventId: Long?,
         val sortOption: EventSortOption,
         val showArchived: Boolean
     )
@@ -81,16 +87,18 @@ class EventViewModel(
         val selectedId: Long?,
         val query: String,
         val categoryId: Long?,
-        val paymentMethod: PaymentMethod?
+        val paymentMethod: PaymentMethod?,
+        val subEventId: Long?
     )
 
     private val _detailSearchFilter = combine(
         _selectedEventId,
         _detailSearchQuery,
         _detailCategoryId,
-        _detailPaymentMethod
-    ) { id, query, catId, pm ->
-        DetailSearchFilter(id, query, catId, pm)
+        _detailPaymentMethod,
+        _detailSubEventId
+    ) { id, query, catId, pm, subId ->
+        DetailSearchFilter(id, query, catId, pm, subId)
     }
 
     private val detailFilters = combine(
@@ -98,21 +106,23 @@ class EventViewModel(
         _detailSortOption,
         _showArchived
     ) { sf, sort, archived ->
-        DetailFilterParams(sf.selectedId, sf.query, sf.categoryId, sf.paymentMethod, sort, archived)
+        DetailFilterParams(sf.selectedId, sf.query, sf.categoryId, sf.paymentMethod, sf.subEventId, sort, archived)
     }
 
     private data class MetaAndCurrency(
         val categories: List<CategoryEntity>,
         val accounts: List<AccountEntity>,
+        val allEvents: List<EventEntity>,
         val currency: String
     )
 
     private val metaAndCurrency = combine(
         categoryRepository.allCategories,
         accountRepository.allAccounts,
+        eventRepository.allEvents,
         userPreferences.currency
-    ) { cats, accs, curr ->
-        MetaAndCurrency(cats, accs, curr)
+    ) { cats, accs, evts, curr ->
+        MetaAndCurrency(cats, accs, evts, curr)
     }
 
     val uiState: StateFlow<EventsUiState> = combine(
@@ -123,18 +133,28 @@ class EventViewModel(
     ) { summaries, allExpenses, meta, filters ->
         val selectedId = filters.selectedId
         val selectedSummary = summaries.find { it.event.id == selectedId }
+            ?: summaries.flatMap { it.subEventSummaries }.find { it.event.id == selectedId }
+        val childIds = selectedSummary?.subEventSummaries?.map { it.event.id }?.toSet() ?: emptySet()
+
         val eventExpenses = if (selectedId != null) {
-            allExpenses.filter { it.expense.eventId == selectedId }
+            allExpenses.filter { it.expense.eventId == selectedId || it.expense.eventId in childIds }
         } else {
             emptyList()
+        }
+
+        val selectedParentEvent = if (selectedSummary?.event?.parentEventId != null) {
+            meta.allEvents.find { it.id == selectedSummary.event.parentEventId }
+        } else {
+            null
         }
 
         val activeSummaries = summaries.filter { !it.event.isArchived }
         val archivedSummaries = summaries.filter { it.event.isArchived }
         val displayedSummaries = if (filters.showArchived) archivedSummaries else activeSummaries
 
-        // Category Breakdown within this event
-        val categoryBreakdowns = eventExpenses
+        // Category Breakdown within this event (and its sub-events)
+        val expenseItemsOnly = eventExpenses.filter { it.expense.transactionType == TransactionType.EXPENSE }
+        val categoryBreakdowns = expenseItemsOnly
             .filter { it.category != null }
             .groupBy { it.category!! }
             .map { (cat, items) ->
@@ -150,7 +170,7 @@ class EventViewModel(
             .sortedByDescending { it.totalAmount }
 
         // Payment Method Breakdown within this event
-        val paymentBreakdowns = eventExpenses
+        val paymentBreakdowns = expenseItemsOnly
             .groupBy { it.expense.paymentMethod }
             .map { (method, items) ->
                 PaymentMethodSummary(
@@ -161,11 +181,11 @@ class EventViewModel(
             }
             .sortedByDescending { it.totalAmount }
 
-        // Stats
-        val total = eventExpenses.sumOf { it.expense.amount }
-        val count = eventExpenses.size
+        // Stats (rolled-up spend)
+        val total = expenseItemsOnly.sumOf { it.expense.amount }
+        val count = expenseItemsOnly.size
         val avg = if (count > 0) total / count else 0.0
-        val highest = eventExpenses.maxOfOrNull { it.expense.amount } ?: 0.0
+        val highest = expenseItemsOnly.maxOfOrNull { it.expense.amount } ?: 0.0
         val stats = OverallStats(
             totalSpent = total,
             transactionCount = count,
@@ -183,7 +203,13 @@ class EventViewModel(
             val matchesCat = filters.categoryId == null || item.expense.categoryId == filters.categoryId
             val matchesPm = filters.paymentMethod == null || item.expense.paymentMethod == filters.paymentMethod
 
-            matchesQuery && matchesCat && matchesPm
+            val matchesSub = when (filters.subEventId) {
+                null -> true
+                -1L -> item.expense.eventId == selectedId // Direct parent event only
+                else -> item.expense.eventId == filters.subEventId // Specific sub-event
+            }
+
+            matchesQuery && matchesCat && matchesPm && matchesSub
         }
 
         filtered = when (filters.sortOption) {
@@ -197,6 +223,7 @@ class EventViewModel(
             summaries = displayedSummaries,
             currency = meta.currency,
             selectedEventId = selectedId,
+            selectedParentEvent = selectedParentEvent,
             selectedEventSummary = selectedSummary,
             selectedEventExpenses = eventExpenses,
             filteredExpenses = filtered,
@@ -205,9 +232,11 @@ class EventViewModel(
             stats = stats,
             allCategories = meta.categories,
             allAccounts = meta.accounts,
+            allEvents = meta.allEvents,
             searchQuery = filters.query,
             filterCategoryId = filters.categoryId,
             filterPaymentMethod = filters.paymentMethod,
+            filterSubEventId = filters.subEventId,
             sortOption = filters.sortOption,
             showArchived = filters.showArchived,
             activeCount = activeSummaries.size,
@@ -222,8 +251,16 @@ class EventViewModel(
 
     fun selectEvent(eventId: Long?) {
         _selectedEventId.value = eventId
-        if (eventId == null) {
-            clearDetailFilters()
+        _detailSubEventId.value = null
+        clearDetailFilters()
+    }
+
+    fun navigateBack() {
+        val currentEvent = uiState.value.selectedEventSummary?.event
+        if (currentEvent?.parentEventId != null) {
+            selectEvent(currentEvent.parentEventId)
+        } else {
+            selectEvent(null)
         }
     }
 
@@ -249,6 +286,10 @@ class EventViewModel(
         _detailPaymentMethod.value = if (_detailPaymentMethod.value == method) null else method
     }
 
+    fun setDetailSubEvent(subEventId: Long?) {
+        _detailSubEventId.value = if (_detailSubEventId.value == subEventId) null else subEventId
+    }
+
     fun setDetailSortOption(option: EventSortOption) {
         _detailSortOption.value = option
     }
@@ -257,6 +298,7 @@ class EventViewModel(
         _detailSearchQuery.value = ""
         _detailCategoryId.value = null
         _detailPaymentMethod.value = null
+        _detailSubEventId.value = null
         _detailSortOption.value = EventSortOption.NEWEST
     }
 
@@ -275,12 +317,98 @@ class EventViewModel(
         }
     }
 
+    fun createSubEvent(
+        parentEventId: Long,
+        name: String,
+        targetBudget: Double? = null,
+        startDate: Long = System.currentTimeMillis(),
+        colorHex: String? = null
+    ) {
+        viewModelScope.launch {
+            val subEvent = EventEntity(
+                name = name.trim(),
+                description = "",
+                targetBudget = targetBudget,
+                startDate = startDate,
+                parentEventId = parentEventId,
+                colorHex = colorHex
+            )
+            eventRepository.insertEvent(subEvent)
+        }
+    }
+
+    // Option B: Deleting an event deletes all child sub-events AND deletes all expenses
+    // associated with the parent and child sub-events, reverting account balance debits/credits.
     fun deleteEvent(event: EventEntity) {
         viewModelScope.launch {
             if (_selectedEventId.value == event.id) {
-                _selectedEventId.value = null
+                if (event.parentEventId != null) {
+                    _selectedEventId.value = event.parentEventId
+                } else {
+                    _selectedEventId.value = null
+                }
             }
-            eventRepository.deleteEvent(event)
+            val expenses = expenseRepository.getExpensesForEventAndChildrenSync(event.id)
+            for (item in expenses) {
+                val exp = item.expense
+                if (exp.accountId != null) {
+                    when (exp.transactionType) {
+                        TransactionType.EXPENSE -> accountRepository.creditAccount(exp.accountId, exp.amount)
+                        TransactionType.INCOME -> accountRepository.debitAccount(exp.accountId, exp.amount)
+                        TransactionType.TRANSFER -> {
+                            accountRepository.creditAccount(exp.accountId, exp.amount)
+                            if (exp.toAccountId != null) {
+                                accountRepository.debitAccount(exp.toAccountId, exp.amount)
+                            }
+                        }
+                    }
+                }
+            }
+            expenseRepository.deleteExpensesForEventAndChildren(event.id)
+            eventRepository.deleteEventAndChildren(event.id)
+        }
+    }
+
+    fun updateEvent(
+        event: EventEntity,
+        name: String,
+        targetBudget: Double?,
+        description: String = event.description,
+        colorHex: String? = event.colorHex
+    ) {
+        viewModelScope.launch {
+            eventRepository.updateEvent(
+                event.copy(
+                    name = name.trim(),
+                    targetBudget = targetBudget,
+                    description = description.trim(),
+                    colorHex = colorHex
+                )
+            )
+        }
+    }
+
+    // Option B for sub-event: Delete sub-event, delete sub-event expenses, revert account balances.
+    fun deleteSubEvent(subEvent: EventEntity) {
+        viewModelScope.launch {
+            val expenses = expenseRepository.getExpensesByEventSync(subEvent.id)
+            for (item in expenses) {
+                val exp = item.expense
+                if (exp.accountId != null) {
+                    when (exp.transactionType) {
+                        TransactionType.EXPENSE -> accountRepository.creditAccount(exp.accountId, exp.amount)
+                        TransactionType.INCOME -> accountRepository.debitAccount(exp.accountId, exp.amount)
+                        TransactionType.TRANSFER -> {
+                            accountRepository.creditAccount(exp.accountId, exp.amount)
+                            if (exp.toAccountId != null) {
+                                accountRepository.debitAccount(exp.toAccountId, exp.amount)
+                            }
+                        }
+                    }
+                }
+            }
+            expenseRepository.deleteExpensesByEvent(subEvent.id)
+            eventRepository.deleteEvent(subEvent)
         }
     }
 
@@ -288,7 +416,16 @@ class EventViewModel(
         viewModelScope.launch {
             expenseRepository.deleteExpense(expense)
             if (expense.accountId != null) {
-                accountRepository.creditAccount(expense.accountId, expense.amount)
+                when (expense.transactionType) {
+                    TransactionType.EXPENSE -> accountRepository.creditAccount(expense.accountId, expense.amount)
+                    TransactionType.INCOME -> accountRepository.debitAccount(expense.accountId, expense.amount)
+                    TransactionType.TRANSFER -> {
+                        accountRepository.creditAccount(expense.accountId, expense.amount)
+                        if (expense.toAccountId != null) {
+                            accountRepository.debitAccount(expense.toAccountId, expense.amount)
+                        }
+                    }
+                }
             }
         }
     }
@@ -300,15 +437,16 @@ class EventViewModel(
         paymentMethod: PaymentMethod,
         note: String = "",
         accountId: Long? = null,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        eventId: Long? = null
     ) {
-        val eventId = _selectedEventId.value ?: return
+        val targetEventId = eventId ?: _selectedEventId.value ?: return
         viewModelScope.launch {
             val expense = ExpenseEntity(
                 title = title.trim(),
                 amount = amount,
                 categoryId = categoryId,
-                eventId = eventId,
+                eventId = targetEventId,
                 accountId = accountId,
                 paymentMethod = paymentMethod,
                 note = note.trim(),
@@ -329,21 +467,31 @@ class EventViewModel(
         paymentMethod: PaymentMethod,
         note: String = "",
         accountId: Long? = null,
-        timestamp: Long = original.timestamp
+        timestamp: Long = original.timestamp,
+        eventId: Long? = null
     ) {
         viewModelScope.launch {
-            // Refund original account if was debited
             if (original.accountId != null) {
-                accountRepository.creditAccount(original.accountId, original.amount)
+                when (original.transactionType) {
+                    TransactionType.EXPENSE -> accountRepository.creditAccount(original.accountId, original.amount)
+                    TransactionType.INCOME -> accountRepository.debitAccount(original.accountId, original.amount)
+                    TransactionType.TRANSFER -> {
+                        accountRepository.creditAccount(original.accountId, original.amount)
+                        if (original.toAccountId != null) {
+                            accountRepository.debitAccount(original.toAccountId, original.amount)
+                        }
+                    }
+                }
             }
-            // Debit new account if selected
             if (accountId != null) {
                 accountRepository.debitAccount(accountId, amount)
             }
+            val targetEventId = eventId
             val updated = original.copy(
                 title = title.trim(),
                 amount = amount,
                 categoryId = categoryId,
+                eventId = targetEventId,
                 accountId = accountId,
                 paymentMethod = paymentMethod,
                 note = note.trim(),

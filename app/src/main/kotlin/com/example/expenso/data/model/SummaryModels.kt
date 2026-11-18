@@ -12,8 +12,13 @@ data class CategorySpendSummary(
 data class EventSpendSummary(
     val event: EventEntity,
     val totalSpent: Double,
-    val transactionCount: Int
+    val transactionCount: Int,
+    val directSpent: Double = totalSpent,
+    val subEventSummaries: List<EventSpendSummary> = emptyList()
 ) {
+    val subEventCount: Int get() = subEventSummaries.size
+    val hasSubEvents: Boolean get() = subEventSummaries.isNotEmpty()
+
     val budgetProgress: Float?
         get() = event.targetBudget?.let { budget ->
             if (budget > 0) (totalSpent / budget).toFloat().coerceIn(0f, 1f) else 0f

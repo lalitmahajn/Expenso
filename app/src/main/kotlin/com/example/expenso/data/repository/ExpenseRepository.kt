@@ -17,6 +17,26 @@ class ExpenseRepository(private val expenseDao: ExpenseDao) {
         return expenseDao.getExpensesByEvent(eventId)
     }
 
+    fun getExpensesForEventAndChildren(eventId: Long): Flow<List<ExpenseWithDetails>> {
+        return expenseDao.getExpensesForEventAndChildren(eventId)
+    }
+
+    suspend fun getExpensesForEventAndChildrenSync(eventId: Long): List<ExpenseWithDetails> {
+        return expenseDao.getExpensesForEventAndChildrenSync(eventId)
+    }
+
+    suspend fun deleteExpensesForEventAndChildren(eventId: Long): Int {
+        return expenseDao.deleteExpensesForEventAndChildren(eventId)
+    }
+
+    suspend fun getExpensesByEventSync(eventId: Long): List<ExpenseWithDetails> {
+        return expenseDao.getExpensesByEventSync(eventId)
+    }
+
+    suspend fun deleteExpensesByEvent(eventId: Long): Int {
+        return expenseDao.deleteExpensesByEvent(eventId)
+    }
+
     fun getExpenseById(id: Long): Flow<ExpenseWithDetails?> {
         return expenseDao.getExpenseWithDetailsById(id)
     }
@@ -35,6 +55,10 @@ class ExpenseRepository(private val expenseDao: ExpenseDao) {
 
     suspend fun deleteExpense(expense: ExpenseEntity): Int {
         return expenseDao.deleteExpense(expense)
+    }
+
+    suspend fun deleteAllExpenses(): Int {
+        return expenseDao.deleteAllExpenses()
     }
 
     suspend fun getAllForExport(): List<ExpenseWithDetails> {

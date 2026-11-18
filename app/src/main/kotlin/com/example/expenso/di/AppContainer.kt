@@ -20,6 +20,7 @@ interface AppContainer {
     val accountRepository: AccountRepository
     val analyticsRepository: AnalyticsRepository
     val userPreferences: com.example.expenso.data.preferences.UserPreferences
+    val backupRestoreManager: com.example.expenso.data.backup.BackupRestoreManager
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -47,6 +48,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val accountRepository: AccountRepository by lazy {
         AccountRepository(database.accountDao())
+    }
+
+    override val backupRestoreManager: com.example.expenso.data.backup.BackupRestoreManager by lazy {
+        com.example.expenso.data.backup.BackupRestoreManager(database, userPreferences)
     }
 
     override val analyticsRepository: AnalyticsRepository by lazy {

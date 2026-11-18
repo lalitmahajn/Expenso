@@ -3,6 +3,7 @@ package com.example.expenso.ui.statement
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.example.expenso.data.model.EventEntity
 import com.example.expenso.data.model.ExpenseWithDetails
 import java.io.File
 import java.io.FileWriter
@@ -18,7 +19,8 @@ object StatementCsvHelper {
         currency: String,
         periodLabel: String,
         scopeLabel: String,
-        totalAmount: Double
+        totalAmount: Double,
+        allEvents: List<EventEntity> = emptyList()
     ): Uri? {
         return try {
             val exportDir = File(context.cacheDir, "exports")
@@ -38,8 +40,8 @@ object StatementCsvHelper {
             writer.append("# Total Outflow: $currency $totalAmount\n")
             writer.append("# Transactions Count: ${expenses.size}\n\n")
 
-            // Column Headers
-            writer.append("ID,Date,Time,Merchant/Title,Amount,Currency,Category,Account,Function/Event,PaymentMethod,Notes\n")
+            // Column Headers with Event and Sub-Event columns
+            writer.append("ID,Date,Time,Merchant/Title,Amount,Currency,Category,Account,Event,Sub-Event,PaymentMethod,Notes\n")
 
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -49,7 +51,18 @@ object StatementCsvHelper {
                 val safeTitle = escapeCsv(item.expense.title)
                 val safeCat = escapeCsv(item.category?.name ?: "Other")
                 val safeAccount = escapeCsv(item.account?.name ?: "")
-                val safeEvent = escapeCsv(item.event?.name ?: "")
+
+                val eventEntity = item.event
+                val (eventName, subEventName) = when {
+                    eventEntity == null -> "" to ""
+                    eventEntity.parentEventId != null -> {
+                        val parent = allEvents.find { it.id == eventEntity.parentEventId }
+                        (parent?.name ?: "") to eventEntity.name
+                    }
+                    else -> eventEntity.name to ""
+                }
+                val safeEvent = escapeCsv(eventName)
+                val safeSubEvent = escapeCsv(subEventName)
                 val safeNotes = escapeCsv(item.expense.note)
 
                 writer.append("${item.expense.id},")
@@ -61,6 +74,7 @@ object StatementCsvHelper {
                     .append("$safeCat,")
                     .append("$safeAccount,")
                     .append("$safeEvent,")
+                    .append("$safeSubEvent,")
                     .append("${item.expense.paymentMethod.name},")
                     .append("$safeNotes\n")
             }
@@ -87,3 +101,5 @@ object StatementCsvHelper {
         }
     }
 }
+
+typealias CsvExportHelper = StatementCsvHelper

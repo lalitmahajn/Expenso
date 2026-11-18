@@ -1,5 +1,11 @@
 package com.example.expenso.ui.events
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,22 +14,28 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,12 +48,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.expenso.data.model.EventEntity
 import com.example.expenso.data.model.EventSpendSummary
 import com.example.expenso.ui.common.Formatters
 
@@ -57,8 +71,9 @@ import com.example.expenso.ui.common.Formatters
 fun EventsScreen(
     viewModel: EventViewModel
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddDialog by remember { mutableStateOf(false) }
+    var eventToDelete by remember { mutableStateOf<EventEntity?>(null) }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -103,7 +118,7 @@ fun EventsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Budgets, trips and occasion tracking",
+                            text = "Budgets, sub-events and trip tracking",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -169,7 +184,7 @@ fun EventsScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Create an event (e.g. 'Goa Trip' or 'Wedding') to track expenses separately.",
+                            text = "Create an event (e.g. 'Sister's Wedding' or 'Goa Trip') to track multi-phase sub-events.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -181,14 +196,21 @@ fun EventsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(uiState.summaries, key = { it.event.id }) { summary ->
+                    items(
+                        items = uiState.summaries,
+                        key = { it.event.id },
+                        contentType = { "event_card" }
+                    ) { summary ->
                         EventCard(
                             summary = summary,
                             currency = uiState.currency,
                             onClick = {
                                 viewModel.selectEvent(summary.event.id)
                             },
-                            onDelete = { viewModel.deleteEvent(summary.event) }
+                            onSubEventClick = { subEventId ->
+                                viewModel.selectEvent(subEventId)
+                            },
+                            onDelete = { eventToDelete = summary.event }
                         )
                     }
                 }
@@ -205,6 +227,58 @@ fun EventsScreen(
                 }
             )
         }
+
+        // Option B Delete Confirmation Dialog
+        eventToDelete?.let { event ->
+            AlertDialog(
+                onDismissRequest = { eventToDelete = null },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = { Text("Delete '${event.name}'?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "This will permanently delete '${event.name}' along with all of its sub-events and all linked expenses.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Account balances will be automatically restored (Option B Cascade). This action cannot be undone.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteEvent(event)
+                            eventToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete All")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { eventToDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -213,8 +287,11 @@ fun EventCard(
     summary: EventSpendSummary,
     currency: String,
     onClick: () -> Unit,
+    onSubEventClick: (Long) -> Unit = {},
     onDelete: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
@@ -295,7 +372,7 @@ fun EventCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Spent ",
+                        text = "Total Spent ",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -391,6 +468,164 @@ fun EventCard(
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // Sub-Events Badge & Chevron Accordion Toggle
+            if (summary.hasSubEvents) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = !expanded }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val budgetSuffix = summary.event.targetBudget?.let { " / " + Formatters.formatAmount(it, currency) } ?: ""
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = if (summary.subEventCount == 1) "1 sub-event" else "${summary.subEventCount} sub-events",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "• ${Formatters.formatAmount(summary.totalSpent, currency)}$budgetSuffix",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (expanded) "Collapse sub-events" else "Expand sub-events",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                // Inline Mini-Accordion
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        summary.subEventSummaries.forEach { subSummary ->
+                            val subEvent = subSummary.event
+                            val accentColor = subEvent.colorHex?.let { Formatters.parseColor(it) }
+                                ?: MaterialTheme.colorScheme.primary
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                shadowElevation = 0.5.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSubEventClick(subEvent.id) }
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(accentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = subEvent.name,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = Formatters.formatAmount(subSummary.totalSpent, currency),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (subSummary.isOverBudget) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                            )
+                                            if (subEvent.targetBudget != null) {
+                                                Text(
+                                                    text = " / ${Formatters.formatAmount(subEvent.targetBudget, currency)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                                contentDescription = "Open Sub-Event",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Mini Progress Bar if sub-event has budget
+                                    if (subEvent.targetBudget != null && subEvent.targetBudget > 0) {
+                                        val cProgress = subSummary.budgetProgress ?: 0f
+                                        val cBarColor = when {
+                                            subSummary.isOverBudget -> MaterialTheme.colorScheme.error
+                                            cProgress > 0.8f -> Color(0xFFFF9800)
+                                            else -> accentColor
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        LinearProgressIndicator(
+                                            progress = { cProgress },
+                                            color = cBarColor,
+                                            trackColor = cBarColor.copy(alpha = 0.2f),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(3.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

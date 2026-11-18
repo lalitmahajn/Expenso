@@ -1,7 +1,14 @@
 package com.example.expenso.ui.expenses
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,26 +30,37 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TrendingUp
+import com.example.expenso.data.model.EventSortOption
+import com.example.expenso.data.model.PaymentMethod
 import com.example.expenso.data.model.TransactionType
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -60,12 +78,12 @@ import androidx.compose.material3.FabPosition
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +92,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.expenso.data.model.EventEntity
 import com.example.expenso.data.model.ExpenseEntity
 import com.example.expenso.data.model.ExpenseWithDetails
 import com.example.expenso.ui.common.Formatters
@@ -84,10 +103,12 @@ import kotlinx.coroutines.launch
 fun ExpensesScreen(
     viewModel: ExpenseViewModel
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showAddSheet by remember { mutableStateOf(false) }
+    var showFilterSheet by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
     var expenseToEdit by remember { mutableStateOf<ExpenseWithDetails?>(null) }
     var expenseToDelete by remember { mutableStateOf<ExpenseEntity?>(null) }
 
@@ -125,11 +146,11 @@ fun ExpensesScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Text(
                         text = "Expenso",
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -187,94 +208,211 @@ fun ExpensesScreen(
                 }
             }
 
-            // Compact Sleek Search Bar
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            // Search, Sort & Filter Controls
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .height(42.dp)
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                // Search Field
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    BasicTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = viewModel::onSearchQueryChange,
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 13.sp
-                        ),
-                        modifier = Modifier.weight(1f),
-                        decorationBox = { innerTextField ->
-                            if (uiState.searchQuery.isEmpty()) {
-                                Text(
-                                    text = "Search expenses, categories, events...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        BasicTextField(
+                            value = uiState.searchQuery,
+                            onValueChange = viewModel::onSearchQueryChange,
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 13.sp
+                            ),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (uiState.searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search transactions...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                        if (uiState.searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { viewModel.onSearchQueryChange("") },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
-                            innerTextField()
                         }
-                    )
-                    if (uiState.searchQuery.isNotEmpty()) {
-                        IconButton(
-                            onClick = { viewModel.onSearchQueryChange("") },
-                            modifier = Modifier.size(20.dp)
+                    }
+                }
+
+                // Sort Dropdown Button
+                Box {
+                    Surface(
+                        onClick = { showSortMenu = true },
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.height(44.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Clear,
-                                contentDescription = "Clear",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp)
+                                imageVector = Icons.Default.Sort,
+                                contentDescription = "Sort",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = uiState.sortOption.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false }
+                    ) {
+                        EventSortOption.values().forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = option.label,
+                                        fontWeight = if (uiState.sortOption == option) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (uiState.sortOption == option) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                onClick = {
+                                    viewModel.setSortOption(option)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Filter Button
+                Surface(
+                    onClick = { showFilterSheet = true },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (uiState.activeFilterCount > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        BadgedBox(
+                            badge = {
+                                if (uiState.activeFilterCount > 0) {
+                                    Badge { Text("${uiState.activeFilterCount}") }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FilterList,
+                                contentDescription = "Filters",
+                                tint = if (uiState.activeFilterCount > 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                 }
             }
 
-            // Category Filter Chips
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
-            ) {
-                item {
-                    FilterChip(
-                        selected = uiState.selectedCategoryId == null,
-                        onClick = { viewModel.selectCategory(null) },
-                        label = { Text("All Categories") }
-                    )
-                }
-                items(uiState.categories) { category ->
-                    val isSelected = uiState.selectedCategoryId == category.id
-                    val catColor = Formatters.parseColor(category.colorHex)
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { viewModel.selectCategory(category.id) },
-                        label = { Text(category.name) },
-                        leadingIcon = {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(catColor)
-                            )
-                        }
-                    )
+            // Active Filters Chips (Only displayed if filters are active)
+            if (uiState.activeFilterCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    uiState.selectedEventId?.let { evId ->
+                        val ev = uiState.events.find { it.id == evId }
+                        InputChip(
+                            selected = true,
+                            onClick = { viewModel.selectEvent(null) },
+                            label = { Text(ev?.name ?: "Event") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove",
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        )
+                    }
+                    uiState.selectedCategoryId?.let { catId ->
+                        val cat = uiState.categories.find { it.id == catId }
+                        InputChip(
+                            selected = true,
+                            onClick = { viewModel.selectCategory(null) },
+                            label = { Text(cat?.name ?: "Category") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove",
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        )
+                    }
+                    uiState.selectedPaymentMethod?.let { pm ->
+                        InputChip(
+                            selected = true,
+                            onClick = { viewModel.selectPaymentMethod(null) },
+                            label = { Text(pm.displayName) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove",
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        )
+                    }
+                    TextButton(
+                        onClick = { viewModel.resetAllFilters() },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
+                        Text("Clear All", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
 
@@ -299,7 +437,7 @@ fun ExpensesScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (uiState.searchQuery.isNotBlank() || uiState.selectedCategoryId != null) {
+                            text = if (uiState.searchQuery.isNotBlank() || uiState.activeFilterCount > 0) {
                                 "No expenses match your filters"
                             } else {
                                 "No expenses recorded yet"
@@ -316,8 +454,10 @@ fun ExpensesScreen(
                     }
                 }
             } else {
-                val groupedExpenses = remember(uiState.expenses) {
-                    uiState.expenses.groupBy { Formatters.formatDate(it.expense.timestamp) }
+                val groupedExpensesWithTotals = remember(uiState.expenses) {
+                    uiState.expenses
+                        .groupBy { Formatters.formatDate(it.expense.timestamp) }
+                        .mapValues { (_, items) -> items to items.sumOf { it.expense.amount } }
                 }
 
                 LazyColumn(
@@ -325,9 +465,9 @@ fun ExpensesScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    groupedExpenses.forEach { (dateHeader, itemsInDate) ->
-                        item {
-                            val dayTotal = itemsInDate.sumOf { it.expense.amount }
+                    groupedExpensesWithTotals.forEach { (dateHeader, pair) ->
+                        val (itemsInDate, dayTotal) = pair
+                        item(key = "header_$dateHeader", contentType = "date_header") {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -350,7 +490,11 @@ fun ExpensesScreen(
                             }
                         }
 
-                        items(itemsInDate, key = { it.expense.id }) { item ->
+                        items(
+                            items = itemsInDate,
+                            key = { it.expense.id },
+                            contentType = { "expense_card" }
+                        ) { item ->
                             val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
                                     if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
@@ -440,22 +584,50 @@ fun ExpensesScreen(
                     }
                 },
                 onSaveIncome = { title, amount, categoryId, accountId, paymentMethod, note, eventId ->
-                    viewModel.addIncome(title, amount, categoryId, accountId, paymentMethod, note, eventId)
+                    val editing = expenseToEdit
+                    if (editing != null) {
+                        viewModel.updateIncome(editing.expense, title, amount, categoryId, accountId, paymentMethod, note, eventId)
+                    } else {
+                        viewModel.addIncome(title, amount, categoryId, accountId, paymentMethod, note, eventId)
+                    }
                     scope.launch { sheetState.hide() }.invokeOnCompletion {
                         showAddSheet = false
                         expenseToEdit = null
                     }
                 },
                 onSaveTransfer = { amount, fromAccountId, toAccountId, note ->
-                    viewModel.addTransfer(amount, fromAccountId, toAccountId, note)
+                    val editing = expenseToEdit
+                    if (editing != null) {
+                        viewModel.updateTransfer(editing.expense, amount, fromAccountId, toAccountId, note)
+                    } else {
+                        viewModel.addTransfer(amount, fromAccountId, toAccountId, note)
+                    }
                     scope.launch { sheetState.hide() }.invokeOnCompletion {
                         showAddSheet = false
                         expenseToEdit = null
                     }
                 },
+                onDelete = { expense ->
+                    scope.launch { sheetState.hide() }.invokeOnCompletion {
+                        showAddSheet = false
+                        expenseToEdit = null
+                        viewModel.deleteExpense(expense)
+                    }
+                },
                 onAddCategory = { name, iconName, colorHex, callback ->
                     viewModel.addCategory(name, iconName, colorHex, callback)
                 }
+            )
+        }
+
+        if (showFilterSheet) {
+            ExpenseFilterBottomSheet(
+                uiState = uiState,
+                onSelectEvent = { viewModel.selectEvent(it) },
+                onSelectCategory = { viewModel.selectCategory(it) },
+                onSelectPayment = { viewModel.selectPaymentMethod(it) },
+                onResetAll = { viewModel.resetAllFilters() },
+                onDismiss = { showFilterSheet = false }
             )
         }
 
@@ -556,6 +728,8 @@ fun ExpensesScreen(
 fun ExpenseCard(
     item: ExpenseWithDetails,
     currency: String,
+    subEvent: EventEntity? = null,
+    showEventBadge: Boolean = true,
     onClick: () -> Unit
 ) {
     val category = item.category
@@ -632,11 +806,14 @@ fun ExpenseCard(
                 )
 
                 // Event Tag Badge displayed under the category/payment line
-                if (item.event != null) {
+                val displayEvent = subEvent ?: if (showEventBadge) item.event else null
+                if (displayEvent != null) {
                     Spacer(modifier = Modifier.height(3.dp))
+                    val eventColor = displayEvent.colorHex?.let { Formatters.parseColor(it) }
+                        ?: MaterialTheme.colorScheme.primary
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        color = eventColor.copy(alpha = 0.12f)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -645,15 +822,15 @@ fun ExpenseCard(
                             Icon(
                                 imageVector = Icons.Default.Event,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = eventColor,
                                 modifier = Modifier.size(10.dp)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = item.event.name,
+                                text = displayEvent.name,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = eventColor,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -696,6 +873,216 @@ fun ExpenseCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExpenseFilterBottomSheet(
+    uiState: ExpensesUiState,
+    onSelectEvent: (Long?) -> Unit,
+    onSelectCategory: (Long?) -> Unit,
+    onSelectPayment: (PaymentMethod?) -> Unit,
+    onResetAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Filter Transactions",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                TextButton(onClick = onResetAll) {
+                    Text("Reset All", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Event / Function
+            if (uiState.events.isNotEmpty()) {
+                val parentEvents = remember(uiState.events) { uiState.events.filter { it.parentEventId == null } }
+                val subEventsByParent = remember(uiState.events) {
+                    uiState.events.filter { it.parentEventId != null }.groupBy { it.parentEventId }
+                }
+                val selectedParent = uiState.events.find { it.id == uiState.selectedEventId }?.let {
+                    if (it.parentEventId != null) uiState.events.find { p -> p.id == it.parentEventId } else it
+                }
+                val activeSubEvents = selectedParent?.id?.let { subEventsByParent[it] } ?: emptyList()
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Event / Function",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = uiState.selectedEventId == null,
+                            onClick = { onSelectEvent(null) },
+                            label = { Text("All Events") }
+                        )
+                        parentEvents.forEach { event ->
+                            val isSelected = uiState.selectedEventId == event.id ||
+                                (uiState.selectedEventId != null && uiState.events.find { it.id == uiState.selectedEventId }?.parentEventId == event.id)
+                            val eventColor = event.colorHex?.let { Formatters.parseColor(it) } ?: MaterialTheme.colorScheme.primary
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onSelectEvent(if (isSelected && uiState.selectedEventId == event.id) null else event.id) },
+                                label = { Text(event.name) },
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(eventColor)
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    // Sub-Events (if selected parent event has sub-events)
+                    if (activeSubEvents.isNotEmpty()) {
+                        Text(
+                            text = "Sub-Event (${selectedParent?.name})",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = uiState.selectedEventId == selectedParent?.id,
+                                onClick = { onSelectEvent(selectedParent?.id) },
+                                label = { Text("All ${selectedParent?.name}") }
+                            )
+                            activeSubEvents.forEach { subEvent ->
+                                val isSubSelected = uiState.selectedEventId == subEvent.id
+                                val subColor = subEvent.colorHex?.let { Formatters.parseColor(it) } ?: MaterialTheme.colorScheme.primary
+                                FilterChip(
+                                    selected = isSubSelected,
+                                    onClick = { onSelectEvent(if (isSubSelected) selectedParent?.id else subEvent.id) },
+                                    label = { Text(subEvent.name) },
+                                    leadingIcon = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(subColor)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Category
+            if (uiState.categories.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Category",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = uiState.selectedCategoryId == null,
+                            onClick = { onSelectCategory(null) },
+                            label = { Text("All Categories") }
+                        )
+                        uiState.categories.forEach { category ->
+                            val isSelected = uiState.selectedCategoryId == category.id
+                            val catColor = Formatters.parseColor(category.colorHex)
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onSelectCategory(if (isSelected) null else category.id) },
+                                label = { Text(category.name) },
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(catColor)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Payment Method
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Payment Method",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = uiState.selectedPaymentMethod == null,
+                        onClick = { onSelectPayment(null) },
+                        label = { Text("All Methods") }
+                    )
+                    PaymentMethod.values().forEach { pm ->
+                        val isSelected = uiState.selectedPaymentMethod == pm
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onSelectPayment(if (isSelected) null else pm) },
+                            label = { Text(pm.displayName) }
+                        )
+                    }
+                }
+            }
+
+            // Apply Button
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Show Results (${uiState.expenses.size})", fontWeight = FontWeight.Bold)
             }
         }
     }

@@ -8,9 +8,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.expenso.data.preferences.ThemeMode
 import com.example.expenso.ui.main.ExpensoMainScreen
 import com.example.expenso.ui.theme.ExpensoTheme
@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
 
     enableEdgeToEdge()
     setContent {
-      val themeMode by userPreferences.themeMode.collectAsState()
+      val themeMode by userPreferences.themeMode.collectAsStateWithLifecycle()
       val systemInDark = isSystemInDarkTheme()
       val useDarkTheme = when (themeMode) {
         ThemeMode.LIGHT -> false

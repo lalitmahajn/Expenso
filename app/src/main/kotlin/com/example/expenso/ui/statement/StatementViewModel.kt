@@ -103,7 +103,11 @@ class StatementViewModel(
             val timestamp = item.expense.timestamp
             val inTime = timestamp in startTime..endTime
             val matchAccount = filters.accountId == null || item.expense.accountId == filters.accountId
-            val matchEvent = filters.eventId == null || item.expense.eventId == filters.eventId
+            val matchEvent = if (filters.eventId == null) {
+                true
+            } else {
+                item.expense.eventId == filters.eventId || item.event?.parentEventId == filters.eventId
+            }
             val matchCategory = catIds.isEmpty() || item.expense.categoryId in catIds
             inTime && matchAccount && matchEvent && matchCategory
         }
@@ -251,8 +255,18 @@ class StatementViewModel(
             }
 
             val selectedEvt = state.events.firstOrNull { it.id == state.selectedEventId }
+            val subEvents = if (selectedEvt != null) {
+                state.events.filter { it.parentEventId == selectedEvt.id }
+            } else {
+                emptyList()
+            }
+
             if (selectedEvt != null) {
-                scopeParts.add("Event: ${selectedEvt.name}")
+                if (subEvents.isNotEmpty()) {
+                    scopeParts.add("Event: ${selectedEvt.name} (All Sub-Events)")
+                } else {
+                    scopeParts.add("Event: ${selectedEvt.name}")
+                }
             }
 
             if (state.selectedCategoryIds.isNotEmpty()) {
@@ -269,7 +283,10 @@ class StatementViewModel(
                         currency = state.currency,
                         periodLabel = periodLabel,
                         scopeLabel = scopeLabel,
-                        totalAmount = state.totalAmount
+                        totalAmount = state.totalAmount,
+                        allEvents = state.events,
+                        selectedEvent = selectedEvt,
+                        subEvents = subEvents
                     )
                 }
                 StatementFormat.CSV -> {
@@ -279,7 +296,8 @@ class StatementViewModel(
                         currency = state.currency,
                         periodLabel = periodLabel,
                         scopeLabel = scopeLabel,
-                        totalAmount = state.totalAmount
+                        totalAmount = state.totalAmount,
+                        allEvents = state.events
                     )
                 }
             }

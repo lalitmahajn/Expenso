@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.expenso.data.model.EventSortOption
 import com.example.expenso.data.model.TransactionType
 
 data class ExpensesUiState(
@@ -32,11 +33,18 @@ data class ExpensesUiState(
     val searchQuery: String = "",
     val selectedCategoryId: Long? = null,
     val selectedEventId: Long? = null,
+    val selectedPaymentMethod: PaymentMethod? = null,
+    val sortOption: EventSortOption = EventSortOption.NEWEST,
     val currency: String = "$",
     val totalAmount: Double = 0.0,
     val totalIncome: Double = 0.0,
     val isLoading: Boolean = false
-)
+) {
+    val activeFilterCount: Int
+        get() = (if (selectedCategoryId != null) 1 else 0) +
+                (if (selectedEventId != null) 1 else 0) +
+                (if (selectedPaymentMethod != null) 1 else 0)
+}
 
 class ExpenseViewModel(
     private val expenseRepository: ExpenseRepository,
@@ -55,14 +63,28 @@ class ExpenseViewModel(
     private val _selectedEventId = MutableStateFlow<Long?>(null)
     val selectedEventId = _selectedEventId.asStateFlow()
 
+    private val _selectedPaymentMethod = MutableStateFlow<PaymentMethod?>(null)
+    val selectedPaymentMethod = _selectedPaymentMethod.asStateFlow()
+
+    private val _sortOption = MutableStateFlow(EventSortOption.NEWEST)
+    val sortOption = _sortOption.asStateFlow()
+
     private data class FilterParams(
         val query: String,
         val categoryId: Long?,
-        val eventId: Long?
+        val eventId: Long?,
+        val paymentMethod: PaymentMethod?,
+        val sortOption: EventSortOption
     )
 
-    private val filterParams = combine(_searchQuery, _selectedCategoryId, _selectedEventId) { query, catId, evId ->
-        FilterParams(query, catId, evId)
+    private val filterParams = combine(
+        _searchQuery,
+        _selectedCategoryId,
+        _selectedEventId,
+        _selectedPaymentMethod,
+        _sortOption
+    ) { query, catId, evId, pm, sort ->
+        FilterParams(query, catId, evId, pm, sort)
     }
 
     private data class AccountAndCurrency(
@@ -89,22 +111,34 @@ class ExpenseViewModel(
                 item.expense.note.contains(filters.query, ignoreCase = true)
 
             val matchesCategory = filters.categoryId == null || item.expense.categoryId == filters.categoryId
-            val matchesEvent = filters.eventId == null || item.expense.eventId == filters.eventId
+            val matchesEvent = filters.eventId == null ||
+                item.expense.eventId == filters.eventId ||
+                item.event?.parentEventId == filters.eventId
+            val matchesPayment = filters.paymentMethod == null || item.expense.paymentMethod == filters.paymentMethod
 
-            matchesQuery && matchesCategory && matchesEvent
+            matchesQuery && matchesCategory && matchesEvent && matchesPayment
         }
 
-        val totalExpenses = filtered.filter { it.expense.transactionType == TransactionType.EXPENSE }.sumOf { it.expense.amount }
-        val totalIncome = filtered.filter { it.expense.transactionType == TransactionType.INCOME }.sumOf { it.expense.amount }
+        val sorted = when (filters.sortOption) {
+            EventSortOption.NEWEST -> filtered.sortedByDescending { it.expense.timestamp }
+            EventSortOption.OLDEST -> filtered.sortedBy { it.expense.timestamp }
+            EventSortOption.HIGHEST_AMOUNT -> filtered.sortedByDescending { it.expense.amount }
+            EventSortOption.LOWEST_AMOUNT -> filtered.sortedBy { it.expense.amount }
+        }
+
+        val totalExpenses = sorted.filter { it.expense.transactionType == TransactionType.EXPENSE }.sumOf { it.expense.amount }
+        val totalIncome = sorted.filter { it.expense.transactionType == TransactionType.INCOME }.sumOf { it.expense.amount }
 
         ExpensesUiState(
-            expenses = filtered,
+            expenses = sorted,
             categories = categories,
             events = events,
             accounts = accCurr.accounts,
             searchQuery = filters.query,
             selectedCategoryId = filters.categoryId,
             selectedEventId = filters.eventId,
+            selectedPaymentMethod = filters.paymentMethod,
+            sortOption = filters.sortOption,
             currency = accCurr.currency,
             totalAmount = totalExpenses,
             totalIncome = totalIncome,
@@ -126,6 +160,20 @@ class ExpenseViewModel(
 
     fun selectEvent(eventId: Long?) {
         _selectedEventId.value = if (_selectedEventId.value == eventId) null else eventId
+    }
+
+    fun selectPaymentMethod(paymentMethod: PaymentMethod?) {
+        _selectedPaymentMethod.value = if (_selectedPaymentMethod.value == paymentMethod) null else paymentMethod
+    }
+
+    fun setSortOption(sortOption: EventSortOption) {
+        _sortOption.value = sortOption
+    }
+
+    fun resetAllFilters() {
+        _selectedCategoryId.value = null
+        _selectedEventId.value = null
+        _selectedPaymentMethod.value = null
     }
 
     fun addExpense(
@@ -181,6 +229,64 @@ class ExpenseViewModel(
                 eventId = eventId,
                 accountId = accountId,
                 paymentMethod = paymentMethod,
+                note = note.trim()
+            )
+            expenseRepository.updateExpense(updated)
+        }
+    }
+
+    fun updateIncome(
+        original: ExpenseEntity,
+        title: String,
+        amount: Double,
+        categoryId: Long,
+        accountId: Long?,
+        paymentMethod: PaymentMethod = PaymentMethod.BANK_TRANSFER,
+        note: String = "",
+        eventId: Long? = null
+    ) {
+        viewModelScope.launch {
+            if (original.accountId != null) {
+                accountRepository.debitAccount(original.accountId, original.amount)
+            }
+            if (accountId != null) {
+                accountRepository.creditAccount(accountId, amount)
+            }
+            val updated = original.copy(
+                title = title.trim(),
+                amount = amount,
+                categoryId = categoryId,
+                eventId = eventId,
+                accountId = accountId,
+                paymentMethod = paymentMethod,
+                note = note.trim()
+            )
+            expenseRepository.updateExpense(updated)
+        }
+    }
+
+    fun updateTransfer(
+        original: ExpenseEntity,
+        amount: Double,
+        fromAccountId: Long,
+        toAccountId: Long,
+        note: String = ""
+    ) {
+        viewModelScope.launch {
+            if (original.accountId != null) {
+                accountRepository.creditAccount(original.accountId, original.amount)
+            }
+            if (original.toAccountId != null) {
+                accountRepository.debitAccount(original.toAccountId, original.amount)
+            }
+            accountRepository.debitAccount(fromAccountId, amount)
+            accountRepository.creditAccount(toAccountId, amount)
+
+            val updated = original.copy(
+                title = if (note.isNotBlank()) note.trim() else "Transfer",
+                amount = amount,
+                accountId = fromAccountId,
+                toAccountId = toAccountId,
                 note = note.trim()
             )
             expenseRepository.updateExpense(updated)

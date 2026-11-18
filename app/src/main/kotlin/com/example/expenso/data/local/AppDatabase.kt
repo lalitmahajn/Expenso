@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
         CategoryEntity::class,
         AccountEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -94,6 +94,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `events_new` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`description` TEXT NOT NULL, " +
+                        "`targetBudget` REAL, " +
+                        "`startDate` INTEGER NOT NULL, " +
+                        "`endDate` INTEGER, " +
+                        "`isArchived` INTEGER NOT NULL, " +
+                        "`parentEventId` INTEGER, " +
+                        "`colorHex` TEXT, " +
+                        "FOREIGN KEY(`parentEventId`) REFERENCES `events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL(
+                    "INSERT INTO `events_new` (`id`, `name`, `description`, `targetBudget`, `startDate`, `endDate`, `isArchived`, `parentEventId`, `colorHex`) " +
+                        "SELECT `id`, `name`, `description`, `targetBudget`, `startDate`, `endDate`, `isArchived`, NULL, NULL FROM `events`"
+                )
+                db.execSQL("DROP TABLE `events`")
+                db.execSQL("ALTER TABLE `events_new` RENAME TO `events`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_events_parentEventId` ON `events` (`parentEventId`)")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -101,7 +126,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "expenso_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .addCallback(DatabaseCallback(scope))
                     .build()

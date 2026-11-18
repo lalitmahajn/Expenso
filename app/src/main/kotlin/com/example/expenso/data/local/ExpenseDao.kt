@@ -26,6 +26,24 @@ interface ExpenseDao {
     fun getExpensesByEvent(eventId: Long): Flow<List<ExpenseWithDetails>>
 
     @Transaction
+    @Query("SELECT * FROM expenses WHERE eventId = :eventId ORDER BY timestamp DESC")
+    suspend fun getExpensesByEventSync(eventId: Long): List<ExpenseWithDetails>
+
+    @Query("DELETE FROM expenses WHERE eventId = :eventId")
+    suspend fun deleteExpensesByEvent(eventId: Long): Int
+
+    @Transaction
+    @Query("SELECT * FROM expenses WHERE eventId = :eventId OR eventId IN (SELECT id FROM events WHERE parentEventId = :eventId) ORDER BY timestamp DESC")
+    fun getExpensesForEventAndChildren(eventId: Long): Flow<List<ExpenseWithDetails>>
+
+    @Transaction
+    @Query("SELECT * FROM expenses WHERE eventId = :eventId OR eventId IN (SELECT id FROM events WHERE parentEventId = :eventId) ORDER BY timestamp DESC")
+    suspend fun getExpensesForEventAndChildrenSync(eventId: Long): List<ExpenseWithDetails>
+
+    @Query("DELETE FROM expenses WHERE eventId = :eventId OR eventId IN (SELECT id FROM events WHERE parentEventId = :eventId)")
+    suspend fun deleteExpensesForEventAndChildren(eventId: Long): Int
+
+    @Transaction
     @Query("SELECT * FROM expenses WHERE id = :id LIMIT 1")
     fun getExpenseWithDetailsById(id: Long): Flow<ExpenseWithDetails?>
 
@@ -53,7 +71,13 @@ interface ExpenseDao {
     @Query("SELECT COUNT(*) FROM expenses")
     suspend fun getTotalExpenseCount(): Int
 
+    @Query("DELETE FROM expenses")
+    suspend fun deleteAllExpenses(): Int
+
     @Transaction
     @Query("SELECT * FROM expenses ORDER BY timestamp ASC")
     suspend fun getAllExpensesForExport(): List<ExpenseWithDetails>
+
+    @Query("SELECT * FROM expenses ORDER BY timestamp ASC")
+    suspend fun getAllRawExpensesSync(): List<ExpenseEntity>
 }

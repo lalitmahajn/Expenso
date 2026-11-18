@@ -1,5 +1,6 @@
 package com.example.expenso.ui.expenses
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,9 +31,11 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,9 +44,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.example.expenso.data.model.AccountEntity
 import com.example.expenso.data.model.CategoryEntity
 import com.example.expenso.data.model.EventEntity
+import com.example.expenso.data.model.ExpenseEntity
 import com.example.expenso.data.model.ExpenseWithDetails
 import com.example.expenso.data.model.PaymentMethod
 import com.example.expenso.data.model.TransactionType
@@ -77,52 +85,67 @@ fun AddExpenseBottomSheet(
     accounts: List<AccountEntity> = emptyList(),
     currency: String,
     initialExpense: ExpenseWithDetails? = null,
+    preselectedEventId: Long? = null,
     onDismiss: () -> Unit,
     onSave: (title: String, amount: Double, categoryId: Long, eventId: Long?, paymentMethod: PaymentMethod, note: String, accountId: Long?) -> Unit,
     onSaveIncome: (title: String, amount: Double, categoryId: Long, accountId: Long?, paymentMethod: PaymentMethod, note: String, eventId: Long?) -> Unit = { _, _, _, _, _, _, _ -> },
     onSaveTransfer: (amount: Double, fromAccountId: Long, toAccountId: Long, note: String) -> Unit = { _, _, _, _ -> },
+    onDelete: ((ExpenseEntity) -> Unit)? = null,
     onAddCategory: (name: String, iconName: String, colorHex: String, onCreated: (Long) -> Unit) -> Unit = { _, _, _, _ -> }
 ) {
     val isEditMode = initialExpense != null
-    var selectedTab by remember {
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var selectedTab by remember(initialExpense) {
         mutableStateOf(initialExpense?.expense?.transactionType ?: TransactionType.EXPENSE)
     }
 
     // Shared / Expense State
-    var title by remember { mutableStateOf(initialExpense?.expense?.title ?: "") }
-    var amountText by remember {
+    var title by remember(initialExpense) { mutableStateOf(initialExpense?.expense?.title ?: "") }
+    var amountText by remember(initialExpense) {
         mutableStateOf(
             initialExpense?.expense?.amount?.let {
                 if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()
             } ?: ""
         )
     }
-    var selectedCategoryId by remember {
+    var selectedCategoryId by remember(initialExpense) {
         mutableStateOf(initialExpense?.expense?.categoryId ?: categories.firstOrNull()?.id ?: 1L)
     }
-    var selectedEventId by remember {
-        mutableStateOf<Long?>(initialExpense?.expense?.eventId ?: events.firstOrNull()?.takeIf { events.size == 1 }?.id)
+    val parentEvents = remember(events) { events.filter { it.parentEventId == null } }
+    val subEventsByParent = remember(events) { events.filter { it.parentEventId != null }.groupBy { it.parentEventId } }
+    val initialEventId = if (isEditMode) initialExpense?.expense?.eventId else (preselectedEventId ?: events.firstOrNull()?.takeIf { events.size == 1 }?.id)
+    val initialEv = events.find { it.id == initialEventId }
+    var selectedParentEventId by remember(initialExpense) {
+        mutableStateOf<Long?>(
+            if (initialEv?.parentEventId != null) initialEv.parentEventId else initialEv?.id
+        )
     }
-    var selectedAccountId by remember {
-        mutableStateOf<Long?>(initialExpense?.expense?.accountId ?: accounts.firstOrNull()?.id)
+    var selectedEventId by remember(initialExpense) {
+        mutableStateOf<Long?>(initialEv?.id)
     }
-    var selectedPaymentMethod by remember {
+    var selectedAccountId by remember(initialExpense) {
+        mutableStateOf<Long?>(
+            if (isEditMode) initialExpense?.expense?.accountId else accounts.firstOrNull()?.id
+        )
+    }
+    var selectedPaymentMethod by remember(initialExpense) {
         mutableStateOf(initialExpense?.expense?.paymentMethod ?: PaymentMethod.CASH)
     }
-    var note by remember { mutableStateOf(initialExpense?.expense?.note ?: "") }
+    var note by remember(initialExpense) { mutableStateOf(initialExpense?.expense?.note ?: "") }
     var isError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
 
     // Transfer Specific State
-    var transferFromAccountId by remember {
-        mutableStateOf<Long?>(initialExpense?.expense?.accountId ?: accounts.firstOrNull()?.id)
-    }
-    var transferToAccountId by remember {
+    var transferFromAccountId by remember(initialExpense) {
         mutableStateOf<Long?>(
-            initialExpense?.expense?.toAccountId
-                ?: accounts.getOrNull(1)?.id
-                ?: accounts.firstOrNull()?.id
+            if (isEditMode) initialExpense?.expense?.accountId else accounts.firstOrNull()?.id
+        )
+    }
+    var transferToAccountId by remember(initialExpense) {
+        mutableStateOf<Long?>(
+            if (isEditMode) initialExpense?.expense?.toAccountId
+            else accounts.getOrNull(1)?.id ?: accounts.firstOrNull()?.id
         )
     }
 
@@ -136,6 +159,8 @@ fun AddExpenseBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
+                .imePadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
         ) {
             // Header bar
@@ -144,7 +169,7 @@ fun AddExpenseBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = if (isEditMode) "Edit Transaction" else when (selectedTab) {
                             TransactionType.EXPENSE -> "Record Expense"
@@ -164,18 +189,39 @@ fun AddExpenseBottomSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        modifier = Modifier.size(18.dp)
-                    )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isEditMode && onDelete != null) {
+                        IconButton(
+                            onClick = { showDeleteConfirmation = true },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Delete Transaction",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -393,7 +439,11 @@ fun AddExpenseBottomSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(categories) { category ->
+                        items(
+                            items = categories,
+                            key = { it.id },
+                            contentType = { "category_chip" }
+                        ) { category ->
                             val isSelected = selectedCategoryId == category.id
                             val catColor = Formatters.parseColor(category.colorHex)
                             DenseChip(
@@ -411,7 +461,7 @@ fun AddExpenseBottomSheet(
                                 }
                             )
                         }
-                        item {
+                        item(key = "add_category_chip", contentType = "action_chip") {
                             DenseChip(
                                 selected = false,
                                 onClick = { showAddCategoryDialog = true },
@@ -437,14 +487,18 @@ fun AddExpenseBottomSheet(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            item {
+                            item(key = "no_account_chip", contentType = "account_chip") {
                                 DenseChip(
                                     selected = selectedAccountId == null,
                                     onClick = { selectedAccountId = null },
                                     label = "None (Cash Flow Only)"
                                 )
                             }
-                            items(accounts) { account ->
+                            items(
+                                items = accounts,
+                                key = { it.id },
+                                contentType = { "account_chip" }
+                            ) { account ->
                                 val isSelected = selectedAccountId == account.id
                                 val accColor = Formatters.parseColor(account.colorHex)
                                 val balFormatted = Formatters.formatAmount(account.balance, currency)
@@ -465,7 +519,11 @@ fun AddExpenseBottomSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(PaymentMethod.values()) { method ->
+                        items(
+                            items = PaymentMethod.values(),
+                            key = { it.name },
+                            contentType = { "payment_method_chip" }
+                        ) { method ->
                             DenseChip(
                                 selected = selectedPaymentMethod == method,
                                 onClick = { selectedPaymentMethod = method },
@@ -478,25 +536,24 @@ fun AddExpenseBottomSheet(
                     if (events.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(14.dp))
                         CompactSectionHeader(title = "TAG TO EVENT / FUNCTION (OPTIONAL)")
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            item {
-                                DenseChip(
-                                    selected = selectedEventId == null,
-                                    onClick = { selectedEventId = null },
-                                    label = "General Expense"
-                                )
+                        ExpandingEventChips(
+                            parentEvents = parentEvents,
+                            subEventsByParent = subEventsByParent,
+                            selectedParentEventId = selectedParentEventId,
+                            selectedEventId = selectedEventId,
+                            defaultChipLabel = "General Expense",
+                            onSelectNone = {
+                                selectedParentEventId = null
+                                selectedEventId = null
+                            },
+                            onSelectParent = { parentId ->
+                                selectedParentEventId = parentId
+                                selectedEventId = parentId
+                            },
+                            onSelectSubEvent = { targetId ->
+                                selectedEventId = targetId
                             }
-                            items(events) { event ->
-                                DenseChip(
-                                    selected = selectedEventId == event.id,
-                                    onClick = { selectedEventId = event.id },
-                                    label = event.name
-                                )
-                            }
-                        }
+                        )
                     }
                 }
 
@@ -508,7 +565,18 @@ fun AddExpenseBottomSheet(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(accounts) { account ->
+                            item(key = "no_account_income_chip", contentType = "account_chip") {
+                                DenseChip(
+                                    selected = selectedAccountId == null,
+                                    onClick = { selectedAccountId = null },
+                                    label = "None (Cash Flow Only)"
+                                )
+                            }
+                            items(
+                                items = accounts,
+                                key = { it.id },
+                                contentType = { "account_chip" }
+                            ) { account ->
                                 val isSelected = selectedAccountId == account.id
                                 val accColor = Formatters.parseColor(account.colorHex)
                                 val balFormatted = Formatters.formatAmount(account.balance, currency)
@@ -529,7 +597,11 @@ fun AddExpenseBottomSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(categories) { category ->
+                        items(
+                            items = categories,
+                            key = { it.id },
+                            contentType = { "category_chip" }
+                        ) { category ->
                             val isSelected = selectedCategoryId == category.id
                             val catColor = Formatters.parseColor(category.colorHex)
                             DenseChip(
@@ -558,13 +630,15 @@ fun AddExpenseBottomSheet(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                     items(
-                        listOf(
+                        items = listOf(
                             PaymentMethod.BANK_TRANSFER to "Bank Transfer",
                             PaymentMethod.UPI to "UPI / Online",
                             PaymentMethod.CASH to "Cash",
                             PaymentMethod.CARD to "Card Payout",
                             PaymentMethod.OTHER to "Other"
-                        )
+                        ),
+                        key = { it.first.name },
+                        contentType = { "received_via_chip" }
                     ) { (method, label) ->
                         DenseChip(
                             selected = selectedPaymentMethod == method,
@@ -579,25 +653,24 @@ fun AddExpenseBottomSheet(
                     if (events.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(14.dp))
                         CompactSectionHeader(title = "TAG TO EVENT / FUNCTION (OPTIONAL)")
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            item {
-                                DenseChip(
-                                    selected = selectedEventId == null,
-                                    onClick = { selectedEventId = null },
-                                    label = "None (General Income)"
-                                )
+                        ExpandingEventChips(
+                            parentEvents = parentEvents,
+                            subEventsByParent = subEventsByParent,
+                            selectedParentEventId = selectedParentEventId,
+                            selectedEventId = selectedEventId,
+                            defaultChipLabel = "None (General Income)",
+                            onSelectNone = {
+                                selectedParentEventId = null
+                                selectedEventId = null
+                            },
+                            onSelectParent = { parentId ->
+                                selectedParentEventId = parentId
+                                selectedEventId = parentId
+                            },
+                            onSelectSubEvent = { targetId ->
+                                selectedEventId = targetId
                             }
-                            items(events) { event ->
-                                DenseChip(
-                                    selected = selectedEventId == event.id,
-                                    onClick = { selectedEventId = event.id },
-                                    label = event.name
-                                )
-                            }
-                        }
+                        )
                     }
                 }
 
@@ -608,7 +681,11 @@ fun AddExpenseBottomSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(accounts) { account ->
+                        items(
+                            items = accounts,
+                            key = { it.id },
+                            contentType = { "account_chip" }
+                        ) { account ->
                             val isSelected = transferFromAccountId == account.id
                             val accColor = Formatters.parseColor(account.colorHex)
                             val balFormatted = Formatters.formatAmount(account.balance, currency)
@@ -633,7 +710,11 @@ fun AddExpenseBottomSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(accounts) { account ->
+                        items(
+                            items = accounts,
+                            key = { it.id },
+                            contentType = { "account_chip" }
+                        ) { account ->
                             val isSelected = transferToAccountId == account.id
                             val isSame = transferFromAccountId == account.id
                             val accColor = Formatters.parseColor(account.colorHex)
@@ -789,7 +870,81 @@ fun AddExpenseBottomSheet(
                 )
             }
 
+            if (isEditMode && onDelete != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { showDeleteConfirmation = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Delete Transaction",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(28.dp))
+        }
+
+        if (showDeleteConfirmation && initialExpense != null && onDelete != null) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmation = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = { Text("Delete Transaction?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Are you sure you want to delete '${initialExpense.expense.title}' (${Formatters.formatAmount(initialExpense.expense.amount, currency)})?",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            "This action cannot be undone. Any debited account balances will be automatically refunded.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteConfirmation = false
+                            onDelete(initialExpense.expense)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmation = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         if (showAddCategoryDialog) {
@@ -916,6 +1071,95 @@ private fun DenseChip(
                 ),
                 color = textColor
             )
+        }
+    }
+}
+
+@Composable
+private fun ExpandingEventChips(
+    parentEvents: List<EventEntity>,
+    subEventsByParent: Map<Long?, List<EventEntity>>,
+    selectedParentEventId: Long?,
+    selectedEventId: Long?,
+    defaultChipLabel: String,
+    onSelectNone: () -> Unit,
+    onSelectParent: (Long) -> Unit,
+    onSelectSubEvent: (Long) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Primary Level: Parent Events
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            item(key = "event_none", contentType = "event_chip") {
+                DenseChip(
+                    selected = selectedEventId == null,
+                    onClick = onSelectNone,
+                    label = defaultChipLabel
+                )
+            }
+            items(
+                items = parentEvents,
+                key = { it.id },
+                contentType = { "parent_event_chip" }
+            ) { parent ->
+                val isParentActive = selectedParentEventId == parent.id
+                DenseChip(
+                    selected = isParentActive,
+                    onClick = { onSelectParent(parent.id) },
+                    label = parent.name
+                )
+            }
+        }
+
+        // Secondary Level: Expanding Sub-Chips (when selected parent has sub-events)
+        if (selectedParentEventId != null) {
+            val childSubEvents = subEventsByParent[selectedParentEventId] ?: emptyList()
+            if (childSubEvents.isNotEmpty()) {
+                val parent = parentEvents.find { it.id == selectedParentEventId }
+                val parentName = parent?.name ?: "Event"
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                ) {
+                    Text(
+                        text = "Sub-Event:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Default selection is parent level [General <Parent>]
+                    item(key = "event_general_${selectedParentEventId}", contentType = "subevent_chip") {
+                        DenseChip(
+                            selected = selectedEventId == selectedParentEventId,
+                            onClick = { onSelectSubEvent(selectedParentEventId) },
+                            label = "General $parentName"
+                        )
+                    }
+                    items(
+                        items = childSubEvents,
+                        key = { it.id },
+                        contentType = { "child_subevent_chip" }
+                    ) { subEvent ->
+                        val accent = subEvent.colorHex?.let { Formatters.parseColor(it) } ?: MaterialTheme.colorScheme.primary
+                        DenseChip(
+                            selected = selectedEventId == subEvent.id,
+                            onClick = { onSelectSubEvent(subEvent.id) },
+                            label = subEvent.name,
+                            accentColor = accent
+                        )
+                    }
+                }
+            }
         }
     }
 }

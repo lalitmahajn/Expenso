@@ -14,6 +14,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts ORDER BY name ASC")
     fun getAllAccounts(): Flow<List<AccountEntity>>
 
+    @Query("SELECT * FROM accounts ORDER BY id ASC")
+    suspend fun getAllAccountsSync(): List<AccountEntity>
+
     @Query("SELECT * FROM accounts WHERE id = :id LIMIT 1")
     suspend fun getAccountById(id: Long): AccountEntity?
 
@@ -28,6 +31,9 @@ interface AccountDao {
 
     @Delete
     suspend fun deleteAccount(account: AccountEntity)
+
+    @Query("DELETE FROM accounts")
+    suspend fun deleteAllAccounts(): Int
 
     @Query("UPDATE accounts SET balance = balance - :amount, updatedAt = :updatedAt WHERE id = :id")
     suspend fun debitBalance(id: Long, amount: Double, updatedAt: Long = System.currentTimeMillis())

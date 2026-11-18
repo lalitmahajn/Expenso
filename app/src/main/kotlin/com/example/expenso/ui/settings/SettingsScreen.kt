@@ -1,6 +1,10 @@
 package com.example.expenso.ui.settings
 
+import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,17 +31,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,11 +58,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,10 +71,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.expenso.data.backup.BackupMetadata
+import com.example.expenso.data.backup.BackupResult
+import com.example.expenso.data.backup.RestorePreviewResult
+import com.example.expenso.data.backup.RestoreResult
 import com.example.expenso.data.preferences.ThemeMode
 import com.example.expenso.data.preferences.UserPreferences
 import com.example.expenso.ui.common.AddCategoryDialog
 import com.example.expenso.ui.common.Formatters
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -71,13 +91,54 @@ fun SettingsScreen(
     onNavigateToStatement: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val currentCurrency by viewModel.currency.collectAsState()
-    val currentThemeMode by viewModel.themeMode.collectAsState()
-    val categories by viewModel.categories.collectAsState()
+    val currentCurrency by viewModel.currency.collectAsStateWithLifecycle()
+    val currentThemeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val categories by viewModel.categories.collectAsStateWithLifecycle()
     var showCurrencyDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showCategoryManagementDialog by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var showClearDataDialog by remember { mutableStateOf(false) }
+    var resetAccountsAlso by remember { mutableStateOf(true) }
+
+    var showBackupOptionsDialog by remember { mutableStateOf(false) }
+    var restorePreview by remember { mutableStateOf<BackupMetadata?>(null) }
+    var restoreJsonContent by remember { mutableStateOf<String?>(null) }
+
+    val backupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportBackup(context, uri) { result ->
+                when (result) {
+                    is BackupResult.Success -> {
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    }
+                    is BackupResult.Error -> {
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    val restoreLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.inspectBackup(context, uri) { previewResult ->
+                when (previewResult) {
+                    is RestorePreviewResult.Success -> {
+                        restorePreview = previewResult.metadata
+                        restoreJsonContent = previewResult.rawJson
+                    }
+                    is RestorePreviewResult.Error -> {
+                        Toast.makeText(context, previewResult.message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -93,18 +154,17 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = "Settings & Data",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Preferences, data export and database tools",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -158,6 +218,29 @@ fun SettingsScreen(
                 onClick = onNavigateToStatement
             )
 
+            // Backup & Database Tools Section
+            Text(
+                text = "Backup & Restore",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            SettingItemCard(
+                icon = Icons.Default.Backup,
+                title = "Backup Database",
+                subtitle = "Export complete offline backup (JSON) to Google Drive or local storage",
+                onClick = { showBackupOptionsDialog = true }
+            )
+
+            SettingItemCard(
+                icon = Icons.Default.Restore,
+                title = "Restore Database",
+                subtitle = "Safely restore transactions, accounts & functions from a backup file",
+                onClick = {
+                    restoreLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                }
+            )
+
             SettingItemCard(
                 icon = Icons.Default.AutoAwesome,
                 title = "Load Sample Demo Data",
@@ -167,6 +250,14 @@ fun SettingsScreen(
                         Toast.makeText(context, "Sample data added successfully!", Toast.LENGTH_SHORT).show()
                     }
                 }
+            )
+
+            SettingItemCard(
+                icon = Icons.Default.DeleteSweep,
+                title = "Clear Demo / All Data",
+                subtitle = "Delete all transactions, custom events, and reset balances",
+                tint = MaterialTheme.colorScheme.error,
+                onClick = { showClearDataDialog = true }
             )
 
             // Security & Privacy
@@ -334,7 +425,11 @@ fun SettingsScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(categories) { category ->
+                            items(
+                                items = categories,
+                                key = { it.id },
+                                contentType = { "category_manage_item" }
+                            ) { category ->
                                 val catColor = Formatters.parseColor(category.colorHex)
                                 val icon = Formatters.getCategoryIcon(category.iconName)
                                 val isCustom = category.id > 10
@@ -417,6 +512,317 @@ fun SettingsScreen(
                 }
             )
         }
+
+        if (showClearDataDialog) {
+            AlertDialog(
+                onDismissRequest = { showClearDataDialog = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.DeleteSweep,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(28.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Clear Demo Data?",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "This will permanently remove all recorded expenses, income entries, transfers, and custom events. Default categories will be kept.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { resetAccountsAlso = !resetAccountsAlso }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Checkbox(
+                                checked = resetAccountsAlso,
+                                onCheckedChange = { resetAccountsAlso = it },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = MaterialTheme.colorScheme.error
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Reset account balances to defaults",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.clearDemoData(resetAccounts = resetAccountsAlso) {
+                                Toast.makeText(context, "All demo data cleared successfully!", Toast.LENGTH_SHORT).show()
+                            }
+                            showClearDataDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text("Clear All Data")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearDataDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showBackupOptionsDialog) {
+            AlertDialog(
+                onDismissRequest = { showBackupOptionsDialog = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Backup,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Backup Database",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Create a complete, offline JSON backup containing all your accounts, categories, functions/events, transactions, and preferences.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showBackupOptionsDialog = false
+                                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                    backupLauncher.launch("Expenso_Backup_$timestamp.json")
+                                }
+                                .padding(12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Save,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Save to Device or Google Drive",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Choose storage folder via Android file picker",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showBackupOptionsDialog = false
+                                    viewModel.shareBackup(context) { file ->
+                                        if (file != null && file.exists()) {
+                                            val uri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                file
+                                            )
+                                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "application/json"
+                                                putExtra(Intent.EXTRA_STREAM, uri)
+                                                putExtra(Intent.EXTRA_SUBJECT, "Expenso Backup")
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            context.startActivity(Intent.createChooser(intent, "Share Expenso Backup"))
+                                        } else {
+                                            Toast.makeText(context, "Failed to create shareable backup file", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                .padding(12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Share Backup File",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Send via WhatsApp, Email, Drive or Bluetooth",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showBackupOptionsDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (restorePreview != null && restoreJsonContent != null) {
+            val meta = restorePreview!!
+            AlertDialog(
+                onDismissRequest = {
+                    restorePreview = null
+                    restoreJsonContent = null
+                },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Restore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Restore Database Backup?",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Found valid Expenso backup document created on:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = meta.exportedAtFormatted,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "• ${meta.expenseCount} Transactions (Expenses, Income & Transfers)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "• ${meta.accountCount} Accounts with balances",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "• ${meta.eventCount} Functions & Occasions (with Sub-events)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "• ${meta.categoryCount} Categories",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "• Currency: ${meta.currency}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "⚠️ Warning: Restoring will overwrite existing records with the data from this backup. Make sure to back up current data if needed.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val json = restoreJsonContent!!
+                            restorePreview = null
+                            restoreJsonContent = null
+                            viewModel.restoreBackup(json) { result ->
+                                when (result) {
+                                    is RestoreResult.Success -> {
+                                        Toast.makeText(
+                                            context,
+                                            "Restored successfully: ${result.expenseCount} txns, ${result.accountCount} accounts, ${result.eventCount} functions!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                    is RestoreResult.Error -> {
+                                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Confirm & Restore")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        restorePreview = null
+                        restoreJsonContent = null
+                    }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -425,6 +831,7 @@ fun SettingItemCard(
     icon: ImageVector,
     title: String,
     subtitle: String,
+    tint: Color = MaterialTheme.colorScheme.primary,
     onClick: () -> Unit
 ) {
     Card(
@@ -443,7 +850,7 @@ fun SettingItemCard(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = tint,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(14.dp))

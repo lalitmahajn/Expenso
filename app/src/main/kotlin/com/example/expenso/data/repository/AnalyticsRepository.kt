@@ -9,6 +9,7 @@ import com.example.expenso.data.model.ExpenseWithDetails
 import com.example.expenso.data.model.OverallStats
 import com.example.expenso.data.model.PaymentMethod
 import com.example.expenso.data.model.PaymentMethodSummary
+import com.example.expenso.data.model.TransactionType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import java.util.Calendar
@@ -120,16 +121,60 @@ class AnalyticsRepository(
             eventDao.getAllEvents(),
             expenseDao.getExpensesByDateRange(startTime, endTime)
         ) { events, expenses ->
-            events.mapNotNull { event ->
-                val eventExpenses = expenses.filter { it.expense.eventId == event.id }
-                if (eventExpenses.isNotEmpty()) {
+            val expenseItems = expenses.filter { it.expense.transactionType == TransactionType.EXPENSE }
+            val parentEventsList = events.filter { it.parentEventId == null }
+            val subEventsList = events.filter { it.parentEventId != null }
+            val subEventsByParent = subEventsList.groupBy { it.parentEventId }
+
+            val parentSummaries = parentEventsList.mapNotNull { parent ->
+                val children = subEventsByParent[parent.id] ?: emptyList()
+                val childSummaries = children.map { child ->
+                    val childExpenses = expenseItems.filter { it.expense.eventId == child.id }
+                    val childTotal = childExpenses.sumOf { it.expense.amount }
                     EventSpendSummary(
-                        event = event,
-                        totalSpent = eventExpenses.sumOf { it.expense.amount },
-                        transactionCount = eventExpenses.size
+                        event = child,
+                        totalSpent = childTotal,
+                        transactionCount = childExpenses.size,
+                        directSpent = childTotal,
+                        subEventSummaries = emptyList()
+                    )
+                }.sortedByDescending { it.totalSpent }
+
+                val directExpenses = expenseItems.filter { it.expense.eventId == parent.id }
+                val directTotal = directExpenses.sumOf { it.expense.amount }
+                val totalChildSpent = childSummaries.sumOf { it.totalSpent }
+                val totalChildCount = childSummaries.sumOf { it.transactionCount }
+                val totalSpent = directTotal + totalChildSpent
+                val totalCount = directExpenses.size + totalChildCount
+
+                if (totalSpent > 0 || totalCount > 0) {
+                    EventSpendSummary(
+                        event = parent,
+                        totalSpent = totalSpent,
+                        transactionCount = totalCount,
+                        directSpent = directTotal,
+                        subEventSummaries = childSummaries
                     )
                 } else null
-            }.sortedByDescending { it.totalSpent }
+            }
+
+            val parentIds = parentEventsList.map { it.id }.toSet()
+            val orphanSubEvents = subEventsList.filter { it.parentEventId !in parentIds }
+            val orphanSummaries = orphanSubEvents.mapNotNull { child ->
+                val childExpenses = expenseItems.filter { it.expense.eventId == child.id }
+                if (childExpenses.isNotEmpty()) {
+                    val childTotal = childExpenses.sumOf { it.expense.amount }
+                    EventSpendSummary(
+                        event = child,
+                        totalSpent = childTotal,
+                        transactionCount = childExpenses.size,
+                        directSpent = childTotal,
+                        subEventSummaries = emptyList()
+                    )
+                } else null
+            }
+
+            (parentSummaries + orphanSummaries).sortedByDescending { it.totalSpent }
         }
     }
 
